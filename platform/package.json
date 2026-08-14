@@ -1,0 +1,28 @@
+{
+  "name": "xb-platform",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@9.12.0",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "turbo build",
+    "dev": "turbo dev",
+    "typecheck": "turbo typecheck",
+    "lint": "turbo lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "db:generate": "pnpm --filter @xb/db generate",
+    "db:migrate": "pnpm --filter @xb/db migrate",
+    "db:seed": "pnpm --filter @xb/db seed",
+    "openapi:generate": "pnpm --filter @xb/contracts openapi",
+    "infra:up": "docker compose up -d",
+    "infra:down": "docker compose down",
+    "infra:reset": "docker compose down -v && docker compose up -d"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "turbo": "^2.3.0",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}

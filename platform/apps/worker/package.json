@@ -1,0 +1,30 @@
+{
+  "name": "@xb/worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node --import @swc-node/register/esm-register --watch src/main.ts",
+    "start": "node --import @swc-node/register/esm-register src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@xb/cache": "workspace:*",
+    "@xb/commerce": "workspace:*",
+    "@xb/contracts": "workspace:*",
+    "@xb/core": "workspace:*",
+    "@xb/db": "workspace:*",
+    "@xb/messaging": "workspace:*",
+    "@xb/observability": "workspace:*",
+    "@xb/resilience": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "ioredis": "^5.4.1",
+    "@xb/sandbox": "workspace:*",
+    "@xb/storage": "workspace:*",
+    "jose": "^5.9.6"
+  },
+  "devDependencies": {
+    "@swc-node/register": "^1.10.9",
+    "@swc/core": "^1.10.1"
+  }
+}

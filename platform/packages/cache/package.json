@@ -1,0 +1,14 @@
+{
+  "name": "@xb/cache",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@xb/core": "workspace:*",
+    "@xb/observability": "workspace:*",
+    "@xb/resilience": "workspace:*",
+    "ioredis": "^5.4.1"
+  }
+}

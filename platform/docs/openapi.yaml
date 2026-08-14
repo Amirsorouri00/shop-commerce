@@ -1,0 +1,1062 @@
+openapi: 3.1.0
+info:
+  title: Cross-Border Assisted Commerce Platform API
+  version: 1.0.0
+  description: |
+    Front office (consumer) and back office (ops/finance) API.
+
+    **This document is generated from the Zod schemas in `@xb/contracts`.** Do not hand-edit it;
+    edit the schema and regenerate with `pnpm openapi:generate`. It is committed so that changes
+    to the public surface show up in review as a diff.
+
+    ## Conventions
+
+    - Every error response uses the same envelope (`Error`), including a `traceId` and bilingual
+      (`en` / `fa`) messages. Clients never translate; they select.
+    - Every mutation that moves money or calls a third party requires an `Idempotency-Key`.
+      Replaying a key returns the original response byte-identically.
+    - Collections are cursor-paginated. Offsets are not supported: the exception queue is written
+      to continuously and offsets drift.
+    - Order mutations accept `If-Match` with the order's `version` for optimistic concurrency.
+    - All monetary values are `{ amount, currency }` where `amount` is an integer in **minor units**.
+      There are no floating-point money values anywhere in this API.
+servers:
+  - url: https://api.example.ir/v1
+    description: Production
+  - url: http://localhost:4000/v1
+    description: Local development
+
+tags:
+  - name: auth
+    description: Multi-provider authentication. Phone OTP is primary; OIDC and email are additive.
+  - name: catalog
+    description: Link resolution — the only entry point to the product world. No search, no catalog.
+  - name: quotes
+    description: Landed-cost quoting with a TTL and a max-procurement guard.
+  - name: orders
+    description: Order lifecycle and unified tracking.
+  - name: payments
+    description: Customer IRR payments and gateway webhooks.
+  - name: admin-ops
+    description: Exception queue and procurement copilot.
+  - name: admin-finance
+    description: Ledger and reconciliation.
+  - name: admin-platform
+    description: Provider health and operational visibility.
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ─────────────────────────── auth ───────────────────────────
+  /auth/otp/start:
+    post:
+      tags: [auth]
+      summary: Request a one-time password
+      description: |
+        Rate limited per phone number and per IP. Always returns 202 whether or not the number is
+        known — enumerating registered customers is not possible through this endpoint.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [phone]
+              properties:
+                phone:
+                  type: string
+                  description: Iranian mobile number in any common local form; normalised to E.164.
+                  examples: ["09121234567", "+989121234567", "۰۹۱۲۱۲۳۴۵۶۷"]
+      responses:
+        '202':
+          description: OTP dispatched if the number is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  challengeId: { type: string, format: uuid }
+                  expiresAt:   { type: string, format: date-time }
+                  resendAfter: { type: integer, description: Seconds until a resend is permitted }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/otp/verify:
+    post:
+      tags: [auth]
+      summary: Exchange an OTP for a token pair
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [challengeId, code]
+              properties:
+                challengeId: { type: string, format: uuid }
+                code:
+                  type: string
+                  description: Six digits. Persian and Arabic-Indic digits are accepted and normalised.
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/ValidationFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/oidc/{provider}:
+    post:
+      tags: [auth]
+      summary: Federated login
+      description: Additive identity provider behind the same `IdentityPort`. Returns the same token shape as OTP.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string, enum: [google] }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken: { type: string }
+      responses:
+        '200':
+          description: Authenticated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate the token pair
+      description: |
+        Refresh tokens are single-use and rotate on every call. Presenting a token that has already
+        been used revokes the entire token family — that pattern indicates theft, not a retry.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Rotated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenPair' }
+        '401':
+          description: Invalid, expired, or reused. A reused token revokes the family.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke the current token family
+      responses:
+        '204': { description: Revoked }
+
+  # ─────────────────────────── catalog ───────────────────────────
+  /product-requests:
+    post:
+      tags: [catalog]
+      summary: Resolve a pasted marketplace URL
+      description: |
+        The single entry point to the product world. Resolution is cached for ten minutes with
+        single-flight protection, so a user hammering the button produces one upstream call.
+
+        Resolution may complete synchronously (cache hit or fast API) or asynchronously (vision-LLM
+        fallback). Check `status` and poll if it is `PENDING`.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url:
+                  type: string
+                  format: uri
+                  examples: ["https://www.amazon.ae/dp/B0CHWRXH8B"]
+      responses:
+        '201':
+          description: Request accepted; product resolved or resolution in flight
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductRequest' }
+        '422':
+          description: Unsupported marketplace, malformed URL, or a disallowed product category
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /product-requests/{id}:
+    get:
+      tags: [catalog]
+      summary: Poll a resolution
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+      responses:
+        '200':
+          description: Current resolution state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProductRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ─────────────────────────── quotes ───────────────────────────
+  /quotes:
+    post:
+      tags: [quotes]
+      summary: Create a landed-cost quote
+      description: |
+        Deterministic. No model output participates in any monetary value.
+
+        Two gates apply. The **viability gate** rejects quotes whose logistics overhead exceeds the
+        threshold — these are orders that cannot be served profitably and should never reach
+        checkout. The **max-procurement guard** is embedded in the returned quote and bounds what we
+        will pay abroad later.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [requestId]
+              properties:
+                requestId: { type: string, format: uuid }
+                quantity:  { type: integer, minimum: 1, maximum: 10, default: 1 }
+                variant:   { type: string, maxLength: 120 }
+      responses:
+        '201':
+          description: Quote created
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '422':
+          description: |
+            Not viable, below minimum order value, product unavailable, or FX too stale to price.
+            The `error.code` distinguishes them.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+              examples:
+                notViable:
+                  value:
+                    error:
+                      code: QUOTE_NOT_VIABLE
+                      message:
+                        en: "Shipping this item costs more than we can justify — it isn't worth ordering."
+                        fa: "هزینه ارسال این کالا بیش از حد مجاز است و سفارش آن به‌صرفه نیست."
+                      traceId: "0f2c9a4e1b7d3c88"
+                fxStale:
+                  value:
+                    error:
+                      code: FX_TOO_STALE
+                      message:
+                        en: "We can't price this right now. Please try again in a moment."
+                        fa: "در حال حاضر امکان قیمت‌گذاری وجود ندارد. لطفاً چند لحظه دیگر تلاش کنید."
+                      traceId: "0f2c9a4e1b7d3c88"
+
+  /quotes/{id}:
+    get:
+      tags: [quotes]
+      summary: Fetch a quote
+      parameters: [{ $ref: '#/components/parameters/PathId' }]
+      responses:
+        '200':
+          description: The quote
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /quotes/{id}/refresh:
+    post:
+      tags: [quotes]
+      summary: Revalidate offer, availability and FX
+      description: |
+        Called by the client before checkout and again server-side inside `POST /orders`. Returns a
+        new quote if anything moved; the original quote is superseded, not mutated.
+      parameters: [{ $ref: '#/components/parameters/PathId' }]
+      responses:
+        '200':
+          description: Revalidated — may be a new quote with different figures
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quote' }
+        '409':
+          description: Product became unavailable
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  # ─────────────────────────── orders ───────────────────────────
+  /orders:
+    get:
+      tags: [orders]
+      summary: List the caller's orders
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Cursor-paginated orders
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/OrderSummary' }
+    post:
+      tags: [orders]
+      summary: Convert a quote into an order
+      description: |
+        Revalidates offer, availability and FX **server-side** before creating anything, regardless
+        of whether the client already called `/quotes/{id}/refresh`. If the price moved beyond
+        tolerance the call fails with `409 QUOTE_STALE` and returns a fresh quote to re-confirm.
+
+        The order, its first timeline event, and the `OrderCreated` outbox row are written in one
+        transaction.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quoteId, addressId]
+              properties:
+                quoteId:   { type: string, format: uuid }
+                addressId: { type: string, format: uuid }
+                note:      { type: string, maxLength: 500 }
+      responses:
+        '201':
+          description: Order created in AWAITING_PAYMENT
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '409':
+          description: Quote expired or the price moved. A fresh quote is included.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Error'
+                  - type: object
+                    properties:
+                      freshQuote: { $ref: '#/components/schemas/Quote' }
+
+  /orders/{id}:
+    get:
+      tags: [orders]
+      summary: Order with its unified timeline
+      description: |
+        The timeline is the customer-facing projection — eight legible steps — not the twenty-four
+        internal states. Raw carrier statuses are never exposed here.
+      parameters: [{ $ref: '#/components/parameters/PathId' }]
+      responses:
+        '200':
+          description: The order
+          headers:
+            ETag:
+              schema: { type: string }
+              description: Order version, for use with `If-Match`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /orders/{id}/cancel:
+    post:
+      tags: [orders]
+      summary: Cancel before payment
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: Cancelled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '409':
+          description: Not cancellable from the current state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /orders/{id}/stream:
+    get:
+      tags: [orders]
+      summary: Live lifecycle stream (WebSocket)
+      description: |
+        WebSocket upgrade. Emits `OrderStateChanged` and `TrackingUpdated` frames for this order.
+        Clients that cannot upgrade fall back to polling `GET /orders/{id}`.
+      parameters: [{ $ref: '#/components/parameters/PathId' }]
+      responses:
+        '101': { description: Switching protocols }
+
+  # ─────────────────────────── payments ───────────────────────────
+  /orders/{id}/payments:
+    post:
+      tags: [payments]
+      summary: Start a payment
+      description: |
+        Selects a gateway via the provider registry and **sticks to it for this order**. Retrying a
+        failed payment reuses the same gateway; failing over mid-payment risks a double charge.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: Payment intent created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  paymentId:   { type: string, format: uuid }
+                  provider:    { type: string, examples: ["zarinpal"] }
+                  redirectUrl: { type: string, format: uri }
+                  expiresAt:   { type: string, format: date-time }
+        '409':
+          description: Order is not awaiting payment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503':
+          description: No healthy payment provider available
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /webhooks/payments/{provider}:
+    post:
+      tags: [payments]
+      summary: Gateway settlement callback
+      description: |
+        Signature-verified and replay-guarded by provider event id. Processing is idempotent: a
+        redelivered webhook produces no second ledger posting.
+
+        On success this transitions the order to `PAID` — **never** to `PURCHASED`. Holding the
+        customer's money says nothing about whether the foreign purchase will succeed.
+      security: []
+      parameters:
+        - name: provider
+          in: path
+          required: true
+          schema: { type: string }
+        - name: X-Signature
+          in: header
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: true }
+      responses:
+        '204': { description: Accepted and processed, or recognised as a replay }
+        '401': { description: Signature verification failed }
+
+  # ─────────────────────────── admin: ops ───────────────────────────
+  /admin/exceptions:
+    get:
+      tags: [admin-ops]
+      summary: Ranked exception queue
+      description: |
+        The back office's default view. Ranked by margin-at-risk multiplied by urgency. This never
+        returns healthy orders — an operator's queue is only the work that needs a human.
+
+        Ranking is model-assisted with a deterministic fallback, so the queue still orders correctly
+        when the model is unavailable.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [PRICE_CHANGED, OUT_OF_STOCK, PAYMENT_FAILED, PROCUREMENT_FAILED, SHIPMENT_EXCEPTION, CUSTOMS_EXCEPTION, CUSTOMER_ACTION_REQUIRED]
+        - name: assignee
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Ranked exceptions
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/ExceptionItem' }
+
+  /admin/procurements/{id}/copilot:
+    get:
+      tags: [admin-ops]
+      summary: Procurement decision context
+      description: Expected price, current price, max authorised, and the margin impact of proceeding.
+      parameters: [{ $ref: '#/components/parameters/PathId' }]
+      responses:
+        '200':
+          description: Copilot context
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ProcurementCopilot' }
+
+  /admin/procurements/{id}/confirm:
+    post:
+      tags: [admin-ops]
+      summary: Confirm a foreign purchase
+      description: |
+        The human authorisation step. The machine has already checked the max-procurement guard
+        before this task ever reached the queue, so confirming a task that exceeds the guard is not
+        possible — it would have branched to `PRICE_CHANGED` instead.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                externalOrderId: { type: string, description: Marketplace order reference, when placed manually }
+                note:            { type: string, maxLength: 500 }
+      responses:
+        '200':
+          description: Purchased
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '409':
+          description: Guard breached or already confirmed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders/{id}/transition:
+    post:
+      tags: [admin-ops]
+      summary: Guarded manual state change
+      description: |
+        Subject to the same transition table as automated changes — an operator cannot move an order
+        somewhere the machine could not. Every use is audited with the actor.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [to, reason]
+              properties:
+                to:     { $ref: '#/components/schemas/OrderState' }
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200':
+          description: Transitioned
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+        '409':
+          description: Illegal transition from the current state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '412':
+          description: Version mismatch — another operator changed this order
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /admin/orders/{id}/reprice:
+    post:
+      tags: [admin-ops]
+      summary: Approve a new maximum procurement price
+      description: Releases an order held in `PRICE_CHANGED` back to `PROCUREMENT_PENDING`.
+      parameters:
+        - $ref: '#/components/parameters/PathId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [newMaxPrice, reason]
+              properties:
+                newMaxPrice: { $ref: '#/components/schemas/Money' }
+                reason:      { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        '200':
+          description: Repriced and released
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Order' }
+
+  # ─────────────────────────── admin: finance ───────────────────────────
+  /admin/finance/unmatched:
+    get:
+      tags: [admin-finance]
+      summary: Reconciliation breaks
+      description: Money that has not matched to an order. Deterministic matches are applied automatically; fuzzy matches appear here for human confirmation.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Unmatched items
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/UnmatchedItem' }
+
+  /admin/finance/ledger:
+    get:
+      tags: [admin-finance]
+      summary: Query the double-entry ledger
+      description: Read-only. There is no write endpoint for the ledger at any privilege level; entries are produced only by domain transactions.
+      parameters:
+        - name: account
+          in: query
+          schema: { type: string }
+        - name: refId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Ledger entries
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Page'
+                  - type: object
+                    properties:
+                      items:
+                        type: array
+                        items: { $ref: '#/components/schemas/LedgerEntry' }
+
+  # ─────────────────────────── admin: platform ───────────────────────────
+  /admin/providers:
+    get:
+      tags: [admin-platform]
+      summary: Provider health and circuit-breaker state
+      description: The same health data the failover selector reads. Useful during an incident to see which gateway is being skipped and why.
+      responses:
+        '200':
+          description: Providers by port
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/ProviderHealth' }
+
+  /admin/stream:
+    get:
+      tags: [admin-platform]
+      summary: Live ops stream (WebSocket)
+      responses:
+        '101': { description: Switching protocols }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PathId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Client-generated UUID. Replaying a key returns the stored response byte-identically.
+      schema: { type: string, format: uuid }
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      description: The order's `version`, from the `ETag` of a prior GET. Prevents two operators acting on one exception.
+      schema: { type: string }
+    Cursor:
+      name: cursor
+      in: query
+      schema: { type: string }
+      description: Opaque cursor from the previous page's `nextCursor`.
+    Limit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+
+  responses:
+    ValidationFailed:
+      description: Request failed schema validation
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          example:
+            error:
+              code: VALIDATION_FAILED
+              message:
+                en: "Some of the information you entered isn't valid."
+                fa: "برخی از اطلاعات واردشده معتبر نیست."
+              traceId: "4b1e77a2f9c30c07"
+              issues:
+                - path: quantity
+                  code: number.max
+                  params: { max: 10 }
+                  message:
+                    en: "Quantity must be 10 or fewer."
+                    fa: "تعداد باید حداکثر ۱۰ باشد."
+    Unauthorized:
+      description: Missing, invalid, or expired credentials
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such resource, or it is not visible to the caller
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Money:
+      type: object
+      description: |
+        The only monetary representation in this API. `amount` is an integer in **minor units**
+        (rial for IRR, fils for AED, cents for USD). There is no floating-point money.
+      required: [amount, currency]
+      properties:
+        amount:   { type: integer, examples: [134950000] }
+        currency: { type: string, enum: [IRR, AED, USD, TRY, EUR, GBP] }
+
+    LocalizedMessage:
+      type: object
+      description: Every human-readable message carries both locales. The client selects; it never translates.
+      required: [en, fa]
+      properties:
+        en: { type: string }
+        fa: { type: string }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, traceId]
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code. Safe to branch on; never changes for a given condition.
+              examples: [VALIDATION_FAILED, QUOTE_STALE, ILLEGAL_TRANSITION, PROVIDER_UNAVAILABLE]
+            message: { $ref: '#/components/schemas/LocalizedMessage' }
+            traceId:
+              type: string
+              description: Correlates to the trace in the observability backend. Safe to show to a user in a support context.
+            issues:
+              type: array
+              description: Present on validation failures — one entry per failed field.
+              items:
+                type: object
+                properties:
+                  path:    { type: string }
+                  code:    { type: string, examples: [number.max, string.uuid, required] }
+                  params:  { type: object, additionalProperties: true }
+                  message: { $ref: '#/components/schemas/LocalizedMessage' }
+
+    Page:
+      type: object
+      required: [items, nextCursor]
+      properties:
+        items: { type: array, items: {} }
+        nextCursor:
+          type: [string, 'null']
+          description: Pass as `cursor` for the next page. `null` means the end.
+
+    TokenPair:
+      type: object
+      required: [accessToken, refreshToken, expiresIn, customer]
+      properties:
+        accessToken:  { type: string }
+        refreshToken: { type: string, description: Single-use; rotates on every refresh. }
+        expiresIn:    { type: integer, description: Access-token lifetime in seconds }
+        customer:     { $ref: '#/components/schemas/Customer' }
+
+    Customer:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        phone:       { type: string, description: E.164 }
+        displayName: { type: [string, 'null'] }
+        locale:      { type: string, enum: [fa, en], default: fa }
+
+    ResolvedProduct:
+      type: object
+      properties:
+        marketplace:       { type: string, examples: ["amazon.ae"] }
+        externalProductId: { type: string }
+        title:             { type: string }
+        seller:            { type: string }
+        variant:           { type: string }
+        imageUrl:          { type: [string, 'null'], format: uri }
+        price:             { $ref: '#/components/schemas/Money' }
+        available:         { type: boolean }
+        weightKg:          { type: number, description: May be estimated; see `confidence`. }
+        route:             { type: string, enum: [UAE, Turkey, Germany, UK, Japan] }
+        resolvedVia:       { type: string, enum: [api, vision-llm, manual] }
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: Per-resolution confidence. Weight and dimensions are the fields most often estimated, and they drive freight cost.
+
+    ProductRequest:
+      type: object
+      properties:
+        id:      { type: string, format: uuid }
+        url:     { type: string, format: uri }
+        status:  { type: string, enum: [PENDING, RESOLVED, FAILED] }
+        product: { oneOf: [{ $ref: '#/components/schemas/ResolvedProduct' }, { type: 'null' }] }
+        failureReason:
+          type: [string, 'null']
+          enum: [UNSUPPORTED_MARKETPLACE, NOT_FOUND, CATEGORY_NOT_ALLOWED, RESOLUTION_FAILED, null]
+
+    QuoteBreakdown:
+      type: object
+      description: Every line the customer is charged for, itemised. Shown in full at checkout — the transparency is the product.
+      properties:
+        product:   { $ref: '#/components/schemas/Money' }
+        freight:   { $ref: '#/components/schemas/Money' }
+        handling:  { $ref: '#/components/schemas/Money' }
+        lastMile:  { $ref: '#/components/schemas/Money' }
+        customs:   { $ref: '#/components/schemas/Money' }
+        insurance: { $ref: '#/components/schemas/Money' }
+        serviceFee:{ $ref: '#/components/schemas/Money' }
+
+    Quote:
+      type: object
+      properties:
+        id:              { type: string, format: uuid }
+        productSnapshot: { $ref: '#/components/schemas/ResolvedProduct' }
+        quantity:        { type: integer }
+        fxRate:          { type: number, description: Source currency to IRR at quote time }
+        breakdown:       { $ref: '#/components/schemas/QuoteBreakdown' }
+        finalPrice:      { $ref: '#/components/schemas/Money' }
+        maxProcurementPrice:
+          $ref: '#/components/schemas/Money'
+        overheadRatio:
+          type: number
+          description: Logistics cost as a fraction of product value. Drives the viability gate.
+        viable:          { type: boolean }
+        createdAt:       { type: string, format: date-time }
+        expiresAt:       { type: string, format: date-time }
+
+    OrderState:
+      type: string
+      description: Internal state. Customers see the eight-step `timeline` projection instead.
+      enum:
+        - DRAFT
+        - QUOTING
+        - QUOTED
+        - AWAITING_PAYMENT
+        - PAID
+        - PROCUREMENT_PENDING
+        - PURCHASED
+        - SELLER_PROCESSING
+        - LOCAL_TRANSIT
+        - WAREHOUSE_RECEIVED
+        - INTERNATIONAL_TRANSIT
+        - CUSTOMS
+        - DOMESTIC_TRANSIT
+        - DELIVERED
+        - PRICE_CHANGED
+        - OUT_OF_STOCK
+        - PAYMENT_FAILED
+        - PROCUREMENT_FAILED
+        - CUSTOMER_ACTION_REQUIRED
+        - SHIPMENT_EXCEPTION
+        - CUSTOMS_EXCEPTION
+        - REFUND_PENDING
+        - REFUNDED
+        - CANCELLED
+
+    TimelineStep:
+      type: object
+      description: One of the eight customer-facing steps.
+      properties:
+        key:
+          type: string
+          enum: [CONFIRMED, PURCHASED, DISPATCHED, AT_WAREHOUSE, INTERNATIONAL, ARRIVED_IRAN, OUT_FOR_DELIVERY, DELIVERED]
+        label:     { $ref: '#/components/schemas/LocalizedMessage' }
+        status:    { type: string, enum: [DONE, CURRENT, PENDING] }
+        occurredAt:{ type: [string, 'null'], format: date-time }
+
+    OrderSummary:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        state:      { $ref: '#/components/schemas/OrderState' }
+        title:      { type: string }
+        imageUrl:   { type: [string, 'null'] }
+        finalPrice: { $ref: '#/components/schemas/Money' }
+        createdAt:  { type: string, format: date-time }
+
+    Order:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        state:      { $ref: '#/components/schemas/OrderState' }
+        version:    { type: integer, description: Optimistic-concurrency token; matches the `ETag`. }
+        quote:      { $ref: '#/components/schemas/Quote' }
+        timeline:
+          type: array
+          items: { $ref: '#/components/schemas/TimelineStep' }
+        alert:
+          description: Present when the order is in an exception state. Explains it in the customer's language without exposing internal state names.
+          oneOf:
+            - type: 'null'
+            - type: object
+              properties:
+                code:       { type: string }
+                message:    { $ref: '#/components/schemas/LocalizedMessage' }
+                actionable: { type: boolean, description: Whether the customer can do something about it }
+        createdAt:  { type: string, format: date-time }
+
+    ExceptionItem:
+      type: object
+      properties:
+        orderId:      { type: string, format: uuid }
+        type:         { type: string }
+        state:        { $ref: '#/components/schemas/OrderState' }
+        marginAtRisk: { $ref: '#/components/schemas/Money' }
+        ageMinutes:   { type: integer }
+        rank:         { type: number, description: margin-at-risk x urgency }
+        rankedBy:     { type: string, enum: [model, deterministic], description: Falls back to deterministic when the ranker is unavailable }
+        assignee:     { type: [string, 'null'] }
+        summary:      { $ref: '#/components/schemas/LocalizedMessage' }
+
+    ProcurementCopilot:
+      type: object
+      properties:
+        procurementId:   { type: string, format: uuid }
+        orderId:         { type: string, format: uuid }
+        marketplace:     { type: string }
+        productUrl:      { type: string, format: uri }
+        expectedPrice:   { $ref: '#/components/schemas/Money' }
+        currentPrice:    { $ref: '#/components/schemas/Money' }
+        maxAuthorised:   { $ref: '#/components/schemas/Money' }
+        withinGuard:     { type: boolean }
+        marginIfProceed: { $ref: '#/components/schemas/Money' }
+        recommendation:
+          type: object
+          description: Model-generated guidance. Advisory only — it cannot move money or change state.
+          properties:
+            action:    { type: string, enum: [PROCEED, HOLD, REFUND, CONTACT_CUSTOMER] }
+            rationale: { $ref: '#/components/schemas/LocalizedMessage' }
+
+    LedgerEntry:
+      type: object
+      properties:
+        seq:      { type: integer }
+        txnId:    { type: string, format: uuid, description: Entries sharing a txnId must balance per currency. }
+        account:  { type: string }
+        debit:    { type: integer }
+        credit:   { type: integer }
+        currency: { type: string }
+        refType:  { type: string }
+        refId:    { type: string, format: uuid }
+        postedAt: { type: string, format: date-time }
+
+    UnmatchedItem:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        source:      { type: string, enum: [gateway_settlement, procurement_spend, refund] }
+        amount:      { $ref: '#/components/schemas/Money' }
+        observedAt:  { type: string, format: date-time }
+        candidates:
+          type: array
+          description: Suggested matches. Fuzzy candidates require human confirmation before posting.
+          items:
+            type: object
+            properties:
+              orderId:    { type: string, format: uuid }
+              confidence: { type: number }
+              basis:      { type: string, enum: [exact_ref, amount_and_window, fuzzy] }
+
+    ProviderHealth:
+      type: object
+      properties:
+        port:     { type: string, examples: [PaymentPort, FxPort, SmsPort] }
+        provider: { type: string }
+        state:    { type: string, enum: [HEALTHY, DEGRADED, QUARANTINED, PROBING] }
+        priority: { type: integer }
+        successRate1h: { type: number }
+        p95LatencyMs:  { type: integer }
+        lastError:     { type: [string, 'null'] }
+        breakerOpenedAt: { type: [string, 'null'], format: date-time }

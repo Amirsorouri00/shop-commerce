@@ -1,0 +1,94 @@
+name: xb-platform
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: xb
+      POSTGRES_PASSWORD: xb
+      POSTGRES_DB: xb
+      # C collation keeps index ordering stable and predictable for cursor pagination
+      POSTGRES_INITDB_ARGS: '--locale=C --encoding=UTF8'
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U xb -d xb']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # noeviction: this Redis holds single-flight locks and idempotency markers alongside the cache.
+    # Silently evicting a lock under memory pressure would let a stampede through.
+    command: redis-server --appendonly yes --maxmemory 512mb --maxmemory-policy noeviction
+    # 6379 is commonly already taken by a local Redis; map ours to 6380.
+    ports: ['6380:6379']
+    volumes: ['redisdata:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:4-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: xb
+      RABBITMQ_DEFAULT_PASS: xb
+    ports:
+      - '5672:5672'    # amqp
+      - '15672:15672'  # management ui
+    volumes: ['rabbitdata:/var/lib/rabbitmq']
+    healthcheck:
+      test: ['CMD', 'rabbitmq-diagnostics', '-q', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: xbminio
+      MINIO_ROOT_PASSWORD: xbminio123
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes: ['miniodata:/data']
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio: { condition: service_healthy }
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 xbminio xbminio123 &&
+      mc mb --ignore-existing local/xb-packages &&
+      mc mb --ignore-existing local/xb-documents &&
+      mc anonymous set none local/xb-packages &&
+      mc anonymous set none local/xb-documents &&
+      echo 'minio buckets ready'
+      "
+
+  # Vendor-neutral telemetry sink. Point its exporters wherever you like later —
+  # the applications only ever speak OTLP to this address.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    command: ['--config=/etc/otel/config.yaml']
+    volumes:
+      - ./infra/otel-collector.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - '4317:4317'  # OTLP gRPC
+      - '4318:4318'  # OTLP HTTP
+
+volumes:
+  pgdata:
+  redisdata:
+  rabbitdata:
+  miniodata:

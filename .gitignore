@@ -1,0 +1,133 @@
+# ============================================================
+# shop-commerce root .gitignore
+# ============================================================
+
+# --- macOS / editor / temporary files ---
+.DS_Store
+**/.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.~lock.*
+~$*
+*.tmp
+*.temp
+
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+!**/.env.example
+!**/.env.*.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.jks
+
+# --- Node / package managers ---
+node_modules/
+**/node_modules/
+.pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
+
+# --- TypeScript / build outputs ---
+dist/
+**/dist/
+build/
+**/build/
+out/
+**/out/
+.next/
+**/.next/
+.turbo/
+**/.turbo/
+coverage/
+**/coverage/
+*.tsbuildinfo
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Framework / tooling caches ---
+.cache/
+**/.cache/
+.vite/
+**/.vite/
+.eslintcache
+.nyc_output/
+.vercel/
+
+# --- Test / browser artifacts ---
+playwright-report/
+test-results/
+blob-report/
+screenshots/
+videos/
+
+# --- Local runtime state ---
+.run/
+**/.run/
+*.pid
+*.pid.lock
+
+# --- Claude local-only state ---
+# Keep shareable project skills/configuration, but never commit machine-local permissions/session state.
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# --- Ruflo / Claude Flow runtime state ---
+.claude-flow/data/
+.claude-flow/logs/
+.claude-flow/sessions/
+.claude-flow/*.pid
+.claude-flow/*state*.json
+
+# --- Ruflo / swarm local databases ---
+.swarm/*.db
+.swarm/*.db-shm
+.swarm/*.db-wal
+ruvector.db
+ruvector.db-shm
+ruvector.db-wal
+
+# --- Graphify generated runtime/cache files ---
+# Keep graph reports/JSON/HTML because they are project context.
+graphify-out/.graphify_python
+graphify-out/.graphify_root
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# --- IDEs ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.example.json
+
+# --- Archives / extracted scratch outputs ---
+unpk/
+__MACOSX/
+
+# --- Local generated verification screenshots ---
+check-*.jpg
+verify-*.jpg
+vpage-*.jpg
+p-[0-9]*.jpg
+
+# --- Misc local scratch artifacts ---
+zi18GeWc
+ziVfua63

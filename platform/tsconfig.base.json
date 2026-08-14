@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+
+    // Workspace packages are consumed as source through their `exports: ./src/index.ts`
+    // entry, so imports carry explicit .ts extensions and nothing is emitted here.
+    // Type checking is the only job of tsc in this repo; apps transpile with their own
+    // toolchain (Next.js `transpilePackages`, SWC for the Nest services), which keeps a
+    // single source of truth and removes the stale-dist class of bug entirely.
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  },
+  "exclude": ["node_modules", "dist", ".next", "out"]
+}

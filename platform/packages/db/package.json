@@ -1,0 +1,22 @@
+{
+  "name": "@xb/db",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "generate": "drizzle-kit generate",
+    "migrate": "node --experimental-strip-types src/migrate.ts",
+    "seed": "node --experimental-strip-types src/seed.ts"
+  },
+  "dependencies": {
+    "@xb/core": "workspace:*",
+    "@xb/observability": "workspace:*",
+    "drizzle-orm": "^0.36.4",
+    "postgres": "^3.4.5"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.28.1"
+  }
+}

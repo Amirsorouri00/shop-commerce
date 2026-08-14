@@ -1,0 +1,16 @@
+{
+  "name": "cross-border-platform-scaffold",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "S1 modular-monolith skeleton for the Cross-Border Assisted Commerce Platform (ports & adapters, quote engine, order state machine). Runs on Node 22+ with zero dependencies.",
+  "engines": { "node": ">=22.6.0" },
+  "scripts": {
+    "demo": "node --experimental-strip-types src/demo.ts",
+    "start": "node --experimental-strip-types src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

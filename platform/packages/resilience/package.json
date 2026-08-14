@@ -1,0 +1,12 @@
+{
+  "name": "@xb/resilience",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "scripts": { "typecheck": "tsc --noEmit" },
+  "dependencies": {
+    "@xb/core": "workspace:*",
+    "@xb/observability": "workspace:*"
+  }
+}
