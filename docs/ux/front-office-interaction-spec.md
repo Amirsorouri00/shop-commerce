@@ -129,21 +129,93 @@ Profile, phone, language, notification preferences (present before delivery exis
 
 Screens × required state categories. **E** exists, **X** extend, **N** new, **—** not applicable.
 
-| Screen | Load | Empty | Valid | Missing data | Outage | Perm | Cancel | Retry | Recover | Async | Notify | Support |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| `/` | E | — | E | **N** | E | — | E | E | E | E | — | **N** |
-| `/login` | E* | — | E* | — | **N** | — | E* | E* | E* | E* | E* | **N** |
-| `/checkout` | E | — | E | — | E | — | E | E | X | E | **N** | **N** |
-| `/checkout/return` | E | — | — | — | E | — | — | E | X | E | **N** | **N** |
-| `/orders` | E | X | — | — | E | **N** | — | E | — | — | **N** | — |
-| `/orders/<id>` | **N** | — | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** |
-| `/addresses` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | — | — | — |
-| `/support` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | **N** | **N** | — |
-| `/settings` | **N** | — | **N** | — | — | **N** | **N** | **N** | — | — | **N** | — |
+| Screen | Load | Empty | Valid | Missing data | Outage | Perm | Cancel | Retry | Recover | Async | Notify | Support | **Terminal** | **Refund** |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| `/` | E | — | E | **N** | E | — | E | E | E | E | — | **N** | X | — |
+| `/login` | E* | — | E* | — | **N** | — | E* | E* | E* | E* | E* | **N** | E* | — |
+| `/checkout` | E | — | E | — | E | — | E | E | X | E | **N** | **N** | E | — |
+| `/checkout/return` | E | — | — | — | E | — | — | E | X | E | **N** | **N** | E | — |
+| `/orders` | E | X | — | — | E | **N** | — | E | — | — | **N** | — | E | — |
+| `/orders/<id>` | **N** | — | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** |
+| `/addresses` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | — | — | — | **N** | — |
+| `/support` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | **N** | **N** | — | **N** | **N** |
+| `/settings` | **N** | — | **N** | — | — | **N** | **N** | **N** | — | — | **N** | — | **N** | — |
 
 \* exists inside `/checkout` today; moves to `/login` as a shared surface.
 
 **Reading it:** the Notify column is **N** almost everywhere — one architectural gap (an unwired `NotificationPort`), not nine screen gaps. The `/orders/<id>` row is entirely **N** because the screen doesn't exist. `/` and `/checkout` are largely covered, which matches Phase 0's finding that the core journey is complete on sandbox adapters.
+
+### Terminal-state coverage
+
+Every terminal state must give the customer explicit closure — the "no dead ends" rule applied to *endings*, not just navigation. Order terminals are the three in `TERMINAL_STATES` (`order-state-machine.ts:61`):
+
+| Terminal | Where seen | Copy exists? | Treatment |
+|---|---|---|---|
+| `DELIVERED` | `/orders/<id>`, `/orders` | timeline step 8 | Completed timeline; route to support if something's wrong on arrival |
+| `REFUNDED` | `/orders/<id>`, `/orders` | **no `ALERTS` entry** | Confirm amount and where the money went. **Gap** (`state-matrix.md` §2) |
+| `CANCELLED` | `/orders/<id>`, `/orders` | **no `ALERTS` entry** | State who cancelled (customer vs. platform) and why. **Gap** |
+
+Non-order terminals: resolution rejected as unsupported/ineligible (`/`) — explicit reason, never a silent stop; support case resolved or withdrawn (`/support/<id>`); address deleted (`/addresses`). Each is specified in its screen section above.
+
+### Refund-state coverage
+
+Refunds are a customer-visible *money* path and need their own treatment; they surface in three distinct ways, all converging on the single existing `X → REFUND_PENDING → REFUNDED` transition path (never a parallel money mechanism):
+
+1. **Automatic** — `OUT_OF_STOCK` refunds without asking (`actionable: false`). `/orders/<id>` shows the `REFUND_PENDING` banner, whose copy already exists.
+2. **Customer-chosen** — the "cancel and refund" branch of a J7 decision on `PRICE_CHANGED` / `CUSTOMS_EXCEPTION` / `CUSTOMER_ACTION_REQUIRED`. **New**.
+3. **Support-mediated** — outcome of a J8 case. **New**, needs the API that doesn't exist.
+
+All three must show: that a refund is in progress, the amount, and an expected timescale. The existing `ALERTS.REFUND_PENDING` copy covers in-progress; `REFUNDED` completion copy is the gap above. **Partial refunds are not modeled anywhere** in the domain — full-order refund only — so no UI may imply partial adjustment is possible.
+
+## Sandbox / demo customer journeys
+
+Sandbox is a first-class platform capability (MASTER-PROMPT §PHASE 9), not a frontend mock. The same domain and application flows execute; only provider adapters and configuration differ. The front office's job is to make that switch **visible and safe**, never to simulate anything itself.
+
+**Existing surface:** `DemoPanel` renders app-wide but only when the sandbox is reachable (`layout.tsx:61-62`), backed by `api.sandbox.{scenarios,create,get,advance,reset}` (`lib/api.ts:308-331`). Preserve that reachability gating exactly — it is what keeps demo controls from ever appearing in production.
+
+**Twelve deterministic scenarios exist** (`packages/sandbox/src/scenario.ts`). Each maps to customer-visible states already specified above, which is the point: a demo walks the *real* journey, not a parallel one.
+
+| Scenario | Customer-visible outcome | Screen |
+|---|---|---|
+| `HAPPY_PATH` | clean resolve → quote → pay → deliver | all |
+| `SLOW_RESOLUTION` | staged escalation copy | `/` |
+| `RESOLUTION_NEEDS_REVIEW` | `NEEDS_REVIEW` + per-field markers | `/` |
+| `UNSUPPORTED_PRODUCT` | explicit rejection with reason | `/` |
+| `PRICE_DRIFT_WITHIN_TOLERANCE` | quote holds; no customer action | `/`, `/checkout` |
+| `PRICE_CHANGED_BREACH` | **J7 decision panel** | `/orders/<id>` |
+| `OUT_OF_STOCK_AT_PROCUREMENT` | informational banner + automatic refund | `/orders/<id>` |
+| `PAYMENT_DECLINED` | `PAYMENT_FAILED` + retry, "nothing has been charged" | `/checkout/return` |
+| `PAYMENT_GATEWAY_TIMEOUT` | pending-payment state, then resolution | `/checkout/return` |
+| `CUSTOMS_HOLD` | `CUSTOMS_EXCEPTION` — actionable, document request | `/orders/<id>` |
+| `SHIPMENT_STALLED` | informational banner, "we're chasing the carrier" | `/orders/<id>` |
+| `FX_PROVIDER_DOWN` | quote blocked with retry, never a stale rate | `/` |
+
+**Requirements on the front office:**
+
+- **Sandbox must be unmistakable.** A persistent, non-dismissible indicator whenever a sandbox session is active. Mock payment screens must be visibly sandbox and must never claim to contact a real provider (MASTER-PROMPT §PHASE 9) — the one demo rule with a real integrity cost if broken.
+- **Virtual clock is a first-class control.** `advance(hours)` is how a multi-day fulfilment journey becomes demonstrable in minutes; the UI should make time advancement legible ("advanced 24h → order now at customs") rather than silently mutating state.
+- **Scenario switching is explicit**, never inferred from environment alone.
+- **Demo controls never occupy customer-journey space** — an overlay/panel, so the journey being demonstrated is the one a real customer sees.
+- **Sandbox parity is the acceptance test:** every state in the coverage matrix above should be reachable via some scenario. Two are not reachable today — `notification`-dependent states (no system) and support/refund states (no domain surface) — which is a scenario-coverage gap to close alongside those features, tracked in the completeness review.
+
+## Design-intelligence findings applied
+
+Run against the installed `ui-ux-pro-max` guideline database (domains `ux`, `product`). Rules below either **confirmed** an existing decision or **added** a requirement; only material ones are listed.
+
+**Added requirements:**
+- **Inline validation on blur, not on keystroke.** Validating mid-typing on a Persian phone number or a postal code produces errors for input that isn't finished. Applies to `/login`, `/checkout` address, `/addresses`.
+- **Disable the control during async submission to prevent double submission** (severity: high). Most consequential on the **J7 decision panel**, where a double-submit is a double state transition on a money-bearing order — reinforcing the idempotency-key requirement from the frontend side too, not just the API.
+- **Errors announced, not just shown** — `role="alert"` / `aria-live` on every error surface. Partially present today (`page.tsx:100`); make it universal.
+- **`inputmode` per field type** so mobile keyboards match (`type="url"`/`inputMode="url"` already on the paste field; needs `tel` on phone, `numeric` on OTP and postal code).
+- **`prefers-reduced-motion` respected** (severity: high) — relevant to the timeline and any decision-panel transitions.
+- **Skip-link to main content**, absent today.
+- **Visible focus rings**, never removed without replacement.
+- **Tabular figures for prices and totals**, so digits don't shift width as amounts change — matters on a screen whose headline is a number.
+- **Animate 1–2 elements per view maximum.** A trust-first commerce surface should not be motion-heavy.
+
+**Confirmed (already specified):** skeletons over spinners past ~1s; labels visible rather than placeholder-only; errors adjacent to their field; error messages carrying a recovery path; ≥44px touch targets; no horizontal scroll; ≥4.5:1 contrast; colour never the sole state carrier.
+
+**Recorded tension, not adopted:** the database's style recommendation for the "E-commerce" product type is *Vibrant & Block-based* with a "brand primary + success green" palette. That optimizes for merchandising energy, which this product deliberately does not do — it is link-first with no catalog, and its conversion mechanism is *trust and pricing transparency* (see below), closer to the fintech/service end than to retail. **Recommendation for Phase 8:** treat the e-commerce style guidance as an input, not a default; the calmer, transparency-first direction is the better fit. Flagged rather than silently discarded, since Phase 8 owns the decision.
 
 ## Responsive behaviour
 
