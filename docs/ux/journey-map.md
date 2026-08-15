@@ -17,7 +17,7 @@ Every journey element MASTER-PROMPT requires is present per journey, marked `n/a
 | Actor | Priority | Journeys |
 |---|---|---|
 | P1/P2 — Individual / frequent shopper | MVP-now | J1–J8 |
-| Merchant's end customer (non-platform identity) | MVP-now (edge) | J9 |
+| Merchant's end customer (non-platform identity) | **platform-later (Line B)** — corrected, see note | J9 |
 | I2/I3 — Procurement/ops + logistics operator | MVP-now | J10–J11 |
 | I1 — Support operator | MVP-now | J12 |
 | I4 — Finance/reconciliation operator | MVP-now | J13 |
@@ -27,6 +27,8 @@ Every journey element MASTER-PROMPT requires is present per journey, marked `n/a
 | P7 — Organization owner (Line B/C) | platform-later | J17 |
 | P5/P6 — Company purchaser / enterprise procurement operator (Line C) | platform-later | J18 |
 | P8 — Finance approver (Line C) | platform-later | J19 |
+
+> **Correction (Phase 5 review):** the merchant's end customer was originally classified MVP-now (edge). That was wrong. This actor is defined by their relationship to a **Line B merchant**, and merchants (P3/P4) are platform-later — a merchant's end customer cannot exist before merchants do. J9 is therefore platform-later, which is also what Phase 5's route inventory independently concluded when it deferred `/track/<token>`. Correcting the classification here rather than in the downstream doc, because an MVP-now journey with no MVP screen is a defect, whereas a platform-later journey with a reserved route is a plan. Recorded per MASTER-PROMPT §5.
 
 Delegated buyer and first-time-buyer are usage variants of P1, folded into J3/J6 rather than given separate journeys. Anti-personas (`anti-personas.md`) are deliberately *not* journeys — see each journey's "Permission denial" / "Validation" rows for where their paths are cut off.
 

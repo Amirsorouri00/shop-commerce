@@ -18,11 +18,13 @@ Every MVP-now journey element from `docs/ux/journey-map.md` (J1–J9), mapped to
 | J6 orders/tracking | `/orders`, `/orders/<id>` | all, incl. unmapped-carrier-status handling | none |
 | J7 exception decision | `/orders/<id>` | all four actionable states; race and SLA documented as gaps | none |
 | J8 support/refund | `/support`, `/support/<id>` | all; SLA documented as gap | none |
-| J9 merchant end customer | `/track/<token>` | deferred with reason (Line B) | none — deferral is explicit, not silent |
+| J9 merchant end customer | `/track/<token>` | **n/a — journey is platform-later** | n/a |
 
 **Terminal states** are covered per journey and consolidated in the interaction spec's terminal-state table. **Anti-personas** (`anti-personas.md`) correctly have no journeys; they are cut off at validation and permission boundaries (link-first enforcement at `/`, ownership scoping on orders, eligibility blocking).
 
-**Result: no unmapped journey elements.** Every J1–J9 element resolves to a screen + state or an explicitly reasoned deferral.
+**Methodology correction.** v1 of this table scored J9 as "Unmapped: none — deferral is explicit, not silent," which made the check unfalsifiable: J9 had eighteen journey elements and zero screen coverage, and "documented as deferred" was being counted as "mapped." Under that rule no journey could ever fail. The real defect was upstream — J9's actor was misclassified MVP-now in `journey-map.md` when it is definitionally Line B (a merchant's end customer cannot exist before merchants). That classification is now corrected at source, so J9 is out of MVP scope on its merits rather than by a scoring loophole. **The test as applied now: an MVP-now journey element counts as mapped only if it resolves to a named screen + state.**
+
+**Result: no unmapped J1–J8 elements**, after closing the seven found in round two (§5, B2–B4). J9 is out of MVP scope.
 
 ## 2. Amazon resolution reconciliation (Phase 4 → Phase 5)
 
@@ -51,7 +53,7 @@ All nine PDP archetypes from `docs/ux/amazon-resolution-journeys.md` map to a sp
 
 The most important check: **no UI state may exist without corresponding backend/domain/operational behaviour, or an explicitly documented gap.** Verified against the API client surface (`lib/api.ts:226-331`) and the service blueprint.
 
-**Backed by existing behaviour** (no new backend): all `/` states (resolve, quote, NEEDS_REVIEW, FAILED, unavailable, per-field provenance, availability-confidence split); all `/login` states (`auth.startOtp`/`verifyOtp`); all `/checkout` and `/checkout/return` states (`quotes`, `addresses.list/create`, `orders.create/startPayment`, polling via `orders.get`); `/orders` list; `/orders/<id>` read, timeline, and **all exception banners** (`alertFor`, `buildCustomerTimeline`); logout (`auth.logout`).
+**Backed by existing behaviour** (no new backend): all `/` states (resolve, quote, NEEDS_REVIEW, FAILED, unavailable, per-field provenance, availability-confidence split, viability-block); `/login` happy path, validation, retry and cooldown (`auth.startOtp`/`verifyOtp`) — **but not** its provider-outage fallback, which has no design (J3 gap, correctly **N** in the matrix; v1 of this section overclaimed "all `/login` states"); all `/checkout` and `/checkout/return` states (`quotes`, `addresses.list/create`, `orders.create/startPayment`, polling via `orders.get`); `/orders` list; `/orders/<id>` read, timeline, polling, fetch-error handling and **all exception banners** (`alertFor`, `buildCustomerTimeline`) — inherited from the working `/track` screen; logout (`auth.logout`).
 
 **Requires new backend — each explicitly documented as a gap:**
 
@@ -108,7 +110,20 @@ Cross-read of Phase 3, 4, and 5 artifacts for incompatible assertions.
 
 Also closed: `/support/<id>` had no refund-status display despite J8's happy path ending in a refund (§3, spec).
 
-**Now open: none.** That claim is worth more than the original one because it survived an adversarial pass.
+**Round two — a second, independent adversarial audit found eight more, all now closed.** It was given the round-one output and asked to attack it, including naming the weakest claim in this document. It did:
+
+| # | Defect | Resolution |
+|---|---|---|
+| B1 | **J9 classified MVP-now with zero MVP coverage**, while Phase 5 deferred it — a contradiction this document had scored as a clean pass by counting "documented as deferred" as "mapped," making the check unfalsifiable. | Root cause fixed upstream: J9's actor was misclassified: a merchant's end customer cannot exist before Line B merchants. Reclassified platform-later in `journey-map.md`; the scoring rule is now stated explicitly (§1) |
+| B2 | **Vision-tier confidence ceiling collides with the UI's "estimated" threshold.** For `weightKg`/`seller`/`variant`/`available` the vision cap is exactly `0.7` and the badge fires on `< 0.7`, so a capped vision estimate renders as **confirmed data**. Silent, and invisible until the vision tier goes live. | Recorded as a defect in the spec with a fix direction: derive "estimated" from `provenance.tier`, not a float comparison against a boundary another module owns |
+| B3 | **Two different confidence thresholds (0.5 and 0.7) were fused** into one sentence in the spec. | Separated and explained; the band between them is the "show it but flag it" zone |
+| B4 | **Unmapped J5/J6/J7 elements**: J5 terminal `CANCELLED` and support escalation; J6 outage, retry/refresh, async polling, support escalation on `/orders/<id>`; J7 failed-submit retry, document validation, support escalation. | All added to the per-screen tables |
+| B5 | **`/orders/<id>` marked entirely N** while `state-matrix.md` marks the same journey's states **E** — both cannot be true. | Reconciled: J6 *is* served today by `/track`; the new screen extends it, so inherited states are **X**. Also corrects Phase 12 sizing |
+| B6 | **"Automatic `OUT_OF_STOCK` refund" stated as behaviour** when `refund()` has no callers and nothing transitions to `REFUND_PENDING`. | Marked target-state, with the note that customer-facing copy already promises it |
+| B7 | **Wrong citation**: `return/page.tsx:37-38` cited for the poll check; those lines are two array entries. | Corrected to array `26-39`, poll check `:66` |
+| B8 | **`/checkout` row dropped J4** while two other places bind J4 to it. | Corrected |
+
+**Now open: none.** Two independent adversarial passes found twelve artifact defects between them; every one was verified against source before acceptance and every one is closed. That is the basis for the claim — not self-certification, which is what produced the false clean result in v1.
 
 ### Product issues discovered by Phase 5 (owned by later phases)
 
@@ -134,9 +149,13 @@ Also closed: `/support/<id>` had no refund-status display despite J8's happy pat
 
 **Specialist capabilities used:** the installed `ui-ux-pro-max` design-intelligence database (domains `ux`, `product`) was queried for checkout/validation/async and accessibility guidance; nine material requirements were added to the interaction spec and one styling tension recorded for Phase 8.
 
-**Independent adversarial review.** A reviewer subagent audited this document and the artifacts it certifies. It found four defects (A1–A4 in §5), two of which directly falsified this document's own pass claims. Each was verified against source before being accepted — none were taken on trust — and all four are now closed. It spot-checked eight `file:line` citations across the Phase 5 docs and found no citation defects.
+**Two independent adversarial reviews.** Round one found four defects (A1–A4), two of which falsified this document's own pass claims. Round two — given round one's output and asked to attack it, including naming this document's weakest claim — found eight more (B1–B8), one of which was a **methodological** flaw that made the journey-gap check unfalsifiable. Every finding across both rounds was verified against source before acceptance; none were taken on trust, and one round-two claim was found overstated in detail (vision fields *below* the ceiling do flag correctly) and recorded in its accurate form rather than as reported.
 
-**Revision log:** v1 self-certified four passing checks. v2 (this version) corrects two false pass claims (A1 orphan screen, A2 unmapped journey element), adds two items the original checks missed (A3 list-level actionability, A4 Phase 3/4 supersession), and adds refund-status display to `/support/<id>`. The §1 table's "none unmapped" entry for J2 is accurate only as of v2.
+**Citation accuracy:** thirteen `file:line` citations checked across the two rounds. Twelve accurate; one wrong (B7).
+
+**Revision log.** v1: self-certified four passing checks — the checks were performed by the author of the artifacts under review, and produced a false clean result. v2: closed A1–A4. v3 (this version): closed B1–B8, corrected the journey-gap scoring rule, and corrected the `/login` and `/orders/<id>` backing claims. Earlier "pass" statements in this document are accurate only as of v3.
+
+**The general lesson, recorded because it will recur in Phases 6–12:** the failure mode in v1 was not carelessness on any single item — it was that a self-review reproduces the author's own blind spots by construction. Both rounds of defects were found only once someone was specifically tasked with falsifying the claims. Later phases should budget for an adversarial pass rather than a confirmatory one, and should treat a first-pass "all checks pass" as unvalidated.
 
 **Limitations, stated plainly:**
 - Layout-level decisions are **not** verified against a rendered Amazon UAE PDP — direct fetch was blocked during Phase 4 (six of seven attempts returned HTTP 503). Product-card layout should be re-verified with browser automation before implementation.

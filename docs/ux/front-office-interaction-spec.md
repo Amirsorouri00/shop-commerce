@@ -28,7 +28,7 @@ These hold on every screen; per-screen sections below note only departures.
 | Loading | Skeleton + staged copy: "در حال بررسی کالا…" → "در حال بررسی دقیق‌تر کالا…" on escalation. Never expose tier names or cost units |
 | Validation | Unsupported/malformed URL → field-level, naming the supported marketplace. This is also where link-first is enforced at the edge |
 | Resolved (`RESOLVED`) | Product card, resolved variant on its own labelled line, quantity, quote CTA |
-| Resolved (`NEEDS_REVIEW`) | Same, **plus per-field markers on the fields actually soft** — generalizing the existing weight badge (`ProductCard.tsx:14-15,43-47`, threshold `< 0.7`) using `missingFields`, already on the wire. Today's single generic banner (`page.tsx:138-143`) names weight regardless of which field is soft |
+| Resolved (`NEEDS_REVIEW`) | Same, **plus per-field markers on the fields actually soft** — generalizing the existing weight badge (`ProductCard.tsx:14-15,43-47`) using `provenance` + `missingFields`, both already on the wire. Today's single generic banner (`page.tsx:138-143`) names weight regardless of which field is soft. **See the two-threshold note below — these are different cutoffs and must not be fused** |
 | Unavailable | Block the quote (already `page.tsx:145-147`). **Distinguish confirmed-unavailable from unconfirmed** — `assemble` maps absent availability to `false` (`resolution.ts:286`), so today "we couldn't check" reads as "not available" |
 | Ineligible | Blocked with a specific reason. **No surface today** — Phase 4 archetype 7, highest-consequence gap: an ineligible item currently resolves, quotes, and fails at customs after payment |
 | **Viability-blocked** | Quote below the v0.3 minimum-order-value threshold → **explicit "this item alone isn't cost-effective to ship" framing, not a bare block** (J2 alternate path + terminal state; viability-gate RULE, `CLAUDE.md`). **Distinct from Ineligible**: ineligible means *we may not* import this (compliance/customs); viability-blocked means *it isn't worth* shipping alone (economics). Conflating them would tell a customer their perfectly legal item is prohibited. Offer the bundling/manual-review path rather than a dead end (routes toward J8, itself a gap) |
@@ -36,6 +36,15 @@ These hold on every screen; per-screen sections below note only departures.
 | Outage | FX/rate unavailable → quote blocked with retry, never a stale rate shown as final |
 | Ladder exhausted | "A specialist is checking this" with an expectation of when — the one path where the honest answer is that a human finishes it |
 | Cancellation | Abandoning before quote persists nothing |
+
+**Two distinct confidence thresholds — do not fuse them.** There are two different cutoffs in play and an earlier draft of this spec conflated them:
+
+- **0.5 — the pipeline's escalation floor** (`MIN_FIELD_CONFIDENCE`, `packages/commerce/src/types.ts:62`, applied at `resolution.ts:259`). Below this a field is *treated as missing* and drives `missingFields` and the `RESOLVED`/`NEEDS_REVIEW` status.
+- **0.7 — the UI's "this was estimated" threshold** (`ProductCard.tsx:15`). Between 0.5 and 0.7 a field is good enough to use but honest to flag.
+
+The band between them is exactly the "show it, but say it's soft" zone, and it is the right model. The UI must read **both**: `missingFields` for the record-level warning, per-field `provenance[f].confidence` for the per-field markers.
+
+> **Defect found this pass — record, don't silently fix.** The vision tier caps its self-reported confidences (`cap(v, ceiling)` = `Math.min(v ?? 0.5, ceiling)`, `strategies.ts:358-360`), and for `weightKg`, `seller`, `variant`, and `available` that **ceiling is exactly 0.7** (`strategies.ts:341-346`). The UI badge fires on `confidence < 0.7` (`ProductCard.tsx:15`). So a vision-estimated weight whose model confidence lands at or above the ceiling becomes exactly `0.7`, and `0.7 < 0.7` is false — **the "estimated weight" badge does not render, and a model's guess is presented to the customer as confirmed data.** This is precisely the case the badge exists for. The cheaper tiers are unaffected (`api` weight is 0.6, `structured` 0.55 — both below 0.7 and correctly flagged), so the bug is invisible until the vision tier goes live, and it is silent when it strikes. Weight drives freight, which is most of landed cost. **Fix direction (not applied — Phase 5 is design):** make the UI threshold `<=` the tier ceiling, or better, derive "was this estimated?" from `provenance[f].tier` (`'vision'`/`'manual'` vs `'api'`/`'structured'`) rather than from a float comparison against a boundary that another module owns. The second is more honest: the question the badge answers is *where did this come from*, not *what number did it score*. Related in kind to the `ApiResolutionStrategy` weight-escalation defect recorded in `docs/architecture/product-resolution-architecture.md`.
 
 **Not built:** variation picker (Phase 4 archetype 2). Changing a variant is a **new resolution against that variant's ASIN**, never a local edit — different variants are different ASINs with different price, availability and weight, and mutating client-side decouples what's displayed from what's priced.
 
@@ -79,6 +88,8 @@ Existing step machine (`checkout/page.tsx:28`), extended with saved-address sele
 | Failure | `PAYMENT_FAILED` → retry, carrying the existing reassurance "nothing has been charged" (`ALERTS.PAYMENT_FAILED`) |
 | Duplicate callback | Idempotency-keyed; must never double-charge or double-confirm |
 | Abandoned tab | Order state is authoritative — the customer can close the tab and find the truth in `/orders/<id>` |
+| Terminal `CANCELLED` | A quote abandoned or an order cancelled before payment ends here (J5 terminal). Must state that no money moved and offer a route back to `/` — not silently drop the customer on an order list |
+| Support escalation | "I was charged but the order doesn't show it" — the highest-anxiety moment in the product. Needs a visible route into J8 from both `/checkout` and `/checkout/return`, **not** only from order detail. Currently **N** (no support surface) |
 
 ### `/orders` — list (J6)
 
@@ -107,6 +118,12 @@ Replaces `/track?id=`. Hosts the exception decision UI — the surface whose abs
 | SLA timeout | **Undesigned** (J7 gap). Until a policy exists, do not imply an unlimited window |
 | Terminal | `DELIVERED` / `REFUNDED` / `CANCELLED` — explicit closure. `ALERTS` has copy for neither `REFUNDED` nor `CANCELLED` (`state-matrix.md` §2) |
 | Permission | Ownership-scoped; a non-owner gets not-found, never a hint the order exists |
+| Async / polling | The screen polls (inherited from `/track`); show last-updated time so a quiet order is distinguishable from a stalled page |
+| Outage / fetch error | Order fetch fails → keep the last-known state visible with a "couldn't refresh" notice rather than blanking the screen; a tracking page left open for days will hit transient failures routinely |
+| Retry | Manual refresh alongside the automatic poll |
+| Decision submit failed | Transient failure on a J7 decision → explicit retry, same idempotency key, choices re-enabled. **Distinct from "already decided"** (below), which is not an error |
+| Document validation | Where a customs document is requested: accepted file types, size limit, and a clear rejection message. Validation happens before submission, not after |
+| Support escalation | Route into J8 from any order state, not only `DELIVERED` — "my tracking looks wrong" and "I don't understand this price change" are the two most likely entry points, and the decision panel itself must carry one |
 
 **The `actionable` split is inherited, not invented.** It is already encoded in the backend and must not be overridden by adding customer decisions where the code deliberately decided there isn't one.
 
@@ -139,14 +156,16 @@ Screens × required state categories. **E** exists, **X** extend, **N** new, **�
 | `/checkout` | E | — | E | — | E | — | E | E | X | E | **N** | **N** | E | — |
 | `/checkout/return` | E | — | — | — | E | — | — | E | X | E | **N** | **N** | E | — |
 | `/orders` | E | X | — | — | E | **N** | — | E | — | — | **N** | — | E | — |
-| `/orders/<id>` | **N** | — | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** | **N** |
+| `/orders/<id>` | X | — | **N** | X | X | X | **N** | X | **N** | X | **N** | **N** | X | **N** |
 | `/addresses` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | — | — | — | **N** | — |
 | `/support` | **N** | **N** | **N** | — | — | **N** | **N** | **N** | **N** | **N** | **N** | — | **N** | **N** |
 | `/settings` | **N** | — | **N** | — | — | **N** | **N** | **N** | — | — | **N** | — | **N** | — |
 
 \* exists inside `/checkout` today; moves to `/login` as a shared surface.
 
-**Reading it:** the Notify column is **N** almost everywhere — one architectural gap (an unwired `NotificationPort`), not nine screen gaps. The `/orders/<id>` row is entirely **N** because the screen doesn't exist. `/` and `/checkout` are largely covered, which matches Phase 0's finding that the core journey is complete on sandbox adapters.
+**Reading it:** the Notify column is **N** almost everywhere — one architectural gap (an unwired `NotificationPort`), not nine screen gaps. `/` and `/checkout` are largely covered, matching Phase 0's finding that the core journey is complete on sandbox adapters.
+
+**On `/orders/<id>` being X rather than N.** An earlier draft marked this row entirely **N** ("the screen doesn't exist"), which contradicted `state-matrix.md` §3's J6 row marking loading/empty/outage/permission/retry as **E**. Both cannot be true of the same journey. The reconciliation: **J6 is genuinely served today by `/track?id=`** — it renders the timeline, polls, and handles fetch errors. `/orders/<id>` *replaces and extends* that screen rather than inventing one, so its inherited states are **X** (migrate) and only genuinely new capability — the J7 decision panel, its validation and recovery, notifications, support escalation, refund display — is **N**. This matters for Phase 12 sizing: the work is "extend a working screen and move it to a canonical URL," not "build order tracking."
 
 ### Terminal-state coverage
 
@@ -164,7 +183,7 @@ Non-order terminals: resolution rejected as unsupported/ineligible (`/`) — exp
 
 Refunds are a customer-visible *money* path and need their own treatment; they surface in three distinct ways, all converging on the single existing `X → REFUND_PENDING → REFUNDED` transition path (never a parallel money mechanism):
 
-1. **Automatic** — `OUT_OF_STOCK` refunds without asking (`actionable: false`). `/orders/<id>` shows the `REFUND_PENDING` banner, whose copy already exists.
+1. **Automatic** — `OUT_OF_STOCK` is designed to refund without asking (`actionable: false`, and its `ALERTS` copy already promises "your refund is being processed"). **Target state, not current behaviour:** the payment port's `refund()` has no callers, and nothing in the system transitions an order into `REFUND_PENDING` today. So the copy makes a promise the machinery cannot yet keep — worth fixing early, because it is customer-facing and already written.
 2. **Customer-chosen** — the "cancel and refund" branch of a J7 decision on `PRICE_CHANGED` / `CUSTOMS_EXCEPTION` / `CUSTOMER_ACTION_REQUIRED`. **New**.
 3. **Support-mediated** — outcome of a J8 case. **New**, needs the API that doesn't exist.
 

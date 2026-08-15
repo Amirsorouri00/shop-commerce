@@ -12,7 +12,7 @@ Five routes exist (`platform/apps/web/app/`):
 |---|---|---|---|---|
 | `/` | Paste link → resolve → quote | J1, J2 | none | Single screen through to quote by design (`page.tsx:10-16`: "the link *is* the interface") |
 | `/checkout?quote=<id>` | Login → OTP → address → pay | J3, J4 (inline), J5 | becomes authed | Step machine: `'loading' \| 'login' \| 'otp' \| 'address' \| 'paying' \| 'error'` (`checkout/page.tsx:28`) |
-| `/checkout/return` | Payment return polling | J5 | authed | Polls until a `SETTLED_STATES` member (`return/page.tsx:37-38`) |
+| `/checkout/return` | Payment return polling | J5 | authed | Polls until the order state is a `SETTLED_STATES` member (array at `return/page.tsx:26-39`, poll check at `:66`) |
 | `/orders` | Order list | J6 | authed | |
 | `/track?id=<orderId>` | Order detail + timeline | J6 | **authed** | Polls rather than holding a socket (`track/page.tsx:13-18`) |
 
@@ -51,7 +51,7 @@ Derived from `CLAUDE.md` RULEs and Phase 1–3 decisions; these constrain every 
 |---|---|---|---|---|---|
 | `/` | Paste link → resolve → confirm → quote | J1, J2 | none | **X** | Add per-field provenance markers, variant display, ladder-progress states (Phase 4 archetypes 2, 8, 9) |
 | `/login` | Phone → OTP | J3 | none | **N** | Fixes defect 1. Returning-user entry; also the redirect target for defect 2. Reuses the same two steps already built in checkout |
-| `/checkout?quote=<id>` | Address → review → pay | J3, J5 | authed | **X** | Keep inline login/OTP steps; add saved-address selection once J4 exists |
+| `/checkout?quote=<id>` | Address → review → pay | J3, **J4**, J5 | authed | **X** | Keep inline login/OTP steps; add saved-address selection once J4 exists |
 | `/checkout/return` | Payment result | J5 | authed | **E** | Already handles pending/success/failure via polling |
 | `/orders` | Order list | J6 | authed | **X** | Add authenticated empty state (distinct from unauthenticated), and a real unauthenticated path to `/login` |
 | `/orders/<id>` | Order detail, timeline, exceptions, decisions | J6, **J7** | authed | **N** | Replaces `/track?id=` with a canonical, linkable, ownership-scoped URL. Hosts the exception decision UI — the single most important net-new front-office surface |
