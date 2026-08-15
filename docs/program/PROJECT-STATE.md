@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 0, 1, 2, 3, and 4 complete.** See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3), and `docs/product/product-resolution.md` + `docs/ux/amazon-resolution-journeys.md` + `docs/architecture/product-resolution-architecture.md` (Phase 4). **Phase 5 (front office) next.**
+**Phase 0, 1, 2, 3, 4, and 5 complete** (Phase 5 = front-office product/UX architecture, per the sequencing clarification below — not implementation). See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3), `docs/product/product-resolution.md` + `docs/ux/amazon-resolution-journeys.md` + `docs/architecture/product-resolution-architecture.md` (Phase 4), and `docs/ux/{front-office-ia,front-office-interaction-spec}.md` (Phase 5). **Phase 6 (backoffice operating model, discovery/design) next.**
 
 ## Approved product boundaries
 
@@ -46,6 +46,7 @@ Each gated integration must still ship with complete domain contract, port, sand
 
 ## Completed work packages
 
+- **Phase 5 front-office product/UX architecture** (`docs/ux/front-office-ia.md`, `docs/ux/front-office-interaction-spec.md`) — target route inventory (5 existing routes → 10 MVP-now), navigation model, journey→screen mapping for J1–J9, per-screen interaction spec, screens × 12-state coverage matrix, responsive rules, trust/conversion patterns, a11y/RTL. Three IA defects found in the live app: **no login route exists** (auth lives only inside `/checkout`), **`/orders` is a one-click dead end when unauthenticated** (tells the user to log in with no way to), and **`/track` is not public** despite its name (calls the ownership-scoped endpoint, so J9 has no surface). Confirmed at the API layer that `addresses` exposes only `list`/`create` and that no support/refund/decision/profile/notification endpoints exist at all.
 - **Phase 4 product resolution** (`docs/product/product-resolution.md`, `docs/ux/amazon-resolution-journeys.md`, `docs/architecture/product-resolution-architecture.md`) — discovered that a full 4-tier resolution ladder (`api → structured → vision → manual`) with per-field provenance/confidence, cost-budgeted escalation, and risk propagation into pricing **already exists** in `platform/packages/commerce/`; Phase 4 formalizes and extends it rather than designing new. Nine Amazon UAE PDP archetypes modeled against it. Live-fetch research confirmed Amazon UAE blocks plain server-side fetching (6 of 7 attempts → HTTP 503), and surfaced that Amazon's PA-API 5.0 was deprecated 2026-05-15 in favour of a narrower-access Creators API — which changes the `api` tier from a credentials question to an availability question.
 - **Phase 3 journey architecture** (`docs/ux/journey-map.md`, `service-blueprint.md`, `state-matrix.md`) — 15 MVP-now journeys modeled to full depth (customer J1–J9, internal operator J10–J15) plus 4 platform-later journeys named directionally; verified against source (`order-state-machine.ts`'s exact 24-state/`TRANSITIONS`/`ALERTS`/`actionable` model, `admin.module.ts`'s exception-queue and RBAC enforcement, `scenario.ts`'s 12 sandbox scenarios, `packages/core/src/ports.ts`'s unwired `NotificationPort`). Confirmed and precisely located the two live "no dead ends" violations MASTER-PROMPT §PHASE 3 forbids: J7 (customer decision UI missing though backend transitions already support it) and J8/J12 (support/refund workflow missing though ledger/state machine/payment-port `refund` already anticipate it). Found one previously-unrecorded small gap: `ALERTS` has no copy for `REFUNDED`/`CANCELLED` terminal states.
 - **Phase 2 personas/accounts** (`docs/product/personas.md`, `jobs-to-be-done.md`, `account-and-organization-model.md`, `anti-personas.md`) — full actor roster across all four lines incl. internal operators; JTBD per actor; greenfield `User`/`PersonalAccount`/`Organization`/`OrganizationMembership`/`Role`/`Permission` model designed to make Line A MVP-now while keeping Line B/C additive; anti-personas traced to explicit compliance RULEs, not invented.
@@ -55,7 +56,7 @@ Each gated integration must still ship with complete domain contract, port, sand
 
 ## Active work packages
 
-- **Phase 5 — front-office product/UX architecture** (in progress). Discovery/design only, per the sequencing clarification below: information architecture, route/screen inventory, interaction specification, state coverage, responsive behaviour, trust/conversion patterns, and journey-to-screen mapping. **No mass frontend implementation in this phase.**
+- None currently in progress. **Phase 6 (backoffice operating model discovery/design) is next and unblocked** — discovery/design only, per the sequencing clarification below.
 
 ## Program sequencing clarification (authoritative)
 
@@ -69,6 +70,13 @@ Recorded 2026-08-15 to resolve an ambiguity in `docs/program/MASTER-PROMPT.md`, 
 This does not change any phase's content or ordering — it fixes what "produce a mature application" means at each stage. It is consistent with MASTER-PROMPT's own §First execution sequence ("Only after those steps should major implementation begin") and §PHASE 5's "Discover the complete information architecture before mass implementation"; the phase titles were the only ambiguity.
 
 ## Unresolved high-impact questions
+
+New from Phase 5:
+
+- **`/orders` is a live dead end for unauthenticated users**, reachable in one click from every page via the top bar, because no login route exists. Cheapest high-value fix in the front office; needs the new `/login` route plus authentication-aware navigation.
+- **`/orders/<id>` (order detail hosting the J7 exception decision UI) does not exist** and is the highest-priority net-new surface — it closes a live "no dead ends" violation using transitions the backend already supports. Note it needs client-side routing under `output: 'export'` (order IDs are unbounded, so `generateStaticParams` can't work) — the same pattern `/track` already uses.
+- **Concurrent decision race is undesigned**: a customer decision on an exception can collide with an operator resolving the same exception via `POST /admin/orders/{id}/transition`. "Already decided" must be a normal outcome, not an error.
+- **Address deletion while referenced by an in-flight order** — undesigned.
 
 New from Phase 4:
 
@@ -109,3 +117,4 @@ Carried forward from Phase 0/1/2 (see the linked docs for detail):
 - Phase 2 personas/accounts: `docs/product/personas.md`, `docs/product/jobs-to-be-done.md`, `docs/product/account-and-organization-model.md`, `docs/product/anti-personas.md`
 - Phase 3 journey architecture: `docs/ux/journey-map.md`, `docs/ux/service-blueprint.md`, `docs/ux/state-matrix.md`
 - Phase 4 product resolution: `docs/product/product-resolution.md`, `docs/ux/amazon-resolution-journeys.md`, `docs/architecture/product-resolution-architecture.md`
+- Phase 5 front-office architecture: `docs/ux/front-office-ia.md`, `docs/ux/front-office-interaction-spec.md`
