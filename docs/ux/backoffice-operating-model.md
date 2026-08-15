@@ -68,7 +68,10 @@ No surface for rate cards, routes, service zones, warehouses, marketplaces, cust
 ### 8. Integration health — *wired (read-only)*
 `GET /providers` projects the circuit-breaker registry into `HEALTHY | PROBING | QUARANTINED` with `lastError` — "the same state the failover selector reads," so operators see the truth the system acts on, not a parallel dashboard. Genuinely good. Read-only: no manual quarantine, force-close, or provider-priority override.
 
-### 9. Sandbox operations — *absent from the back office*
+### 9. Product-resolution review — I2 (or a dedicated reviewer) — *absent* — **added after review**
+Phase 4's resolution ladder terminates in a `manual` tier: `ManualResolutionStrategy` is "the floor that stops a resolution from ever being silently wrong," and it reads operator-supplied values from `ResolutionContext.manualOverrides`. There is **no operator surface to supply them** — see finding F9. Product requests in `NEEDS_REVIEW` or `FAILED` have no queue, no review screen, and no completion command.
+
+### 10. Sandbox operations — *absent from the back office*
 Sandbox endpoints exist and are consumed by the **front** office's `DemoPanel`. The back office has no sandbox surface — no scenario management, session list, or clock control for operators demonstrating or reproducing an issue.
 
 ---
@@ -104,6 +107,16 @@ MASTER-PROMPT §PHASE 6 names "reassign case" as an example workflow command. Th
 `rank` and `rankedBy` are surfaced, `rankedBy` defaults to `'deterministic'`, and `updateRanks()` (`packages/db/src/repositories.ts:656`) is **never called**. The queue's ordering — the mechanism that makes "margin-at-risk × urgency" real rather than aspirational — does not run. `marginAtRisk` and `ageMinutes` *are* computed per item, so the ingredients are present and the queue could rank client-side or on read as an interim step.
 
 **F2, F3 and F4 together:** the exception queue is designed as a work-management system (rank, assign, resolve) and implemented as a **read-only list with two order-level commands**. That is the single most important structural finding of Phase 6, because it is the surface the entire operating model rests on.
+
+### F9 — The resolution ladder's manual tier can never run *(P0, orphaned capability — found on review, initially missed)*
+
+`ManualResolutionStrategy.resolve` throws `UpstreamError('Manual resolution requires operator input')` unless `ctx.manualOverrides` is populated. Repository-wide, `manualOverrides` has **exactly two references**: its declaration (`packages/commerce/src/types.ts:94`) and its consumer (`packages/commerce/src/strategies.ts:381`). **Nothing produces it.** There is no endpoint, no service method, and no screen through which an operator supplies overrides.
+
+The consequence is the same shape as F2 but lands harder. The manual tier is the ladder's designed backstop — its own docstring calls it "the floor that stops a resolution from ever being silently wrong," and it is the only tier with confidence 1.0. A product request that reaches `NEEDS_REVIEW` or `FAILED` therefore has **no path to completion at all**: the automated tiers have already failed, and the human tier is unreachable. Phase 4 recorded the ladder as architecturally complete, which is true of the *strategies*; what is missing is the operator surface that feeds the last one.
+
+Also confirmed: `NEEDS_REVIEW` appears nowhere in `apps/api/src`, so no queue or filter exists over product requests needing review.
+
+**Together with F2 and F3, this is a pattern rather than three coincidences:** the system has three designed operator capabilities — resolve an exception, assign an exception, complete a resolution — each with data model and/or domain logic in place and **no reachable surface**. All three are on the operator side, and all three were built up to the controller boundary and stopped.
 
 ### F5 — I3 (logistics) is merged into I2 by default, not by decision
 

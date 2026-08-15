@@ -47,6 +47,11 @@ API surface (`apps/api/src/modules/admin.module.ts`): 10 endpoints — `exceptio
 | `/support/:id` | Case detail with order + ledger context | support | I1 | **N** | P1 |
 | `/compliance` | Flagged-order review queue | compliance | I5 | **N** | P2 |
 | `/sandbox` | Scenario list, session control, virtual clock | sandbox ops | I2 | **N** | P2 |
+| `/resolutions` | Product requests needing review — queue | resolution review | I2 | **N** | **P0** |
+| `/resolutions/:id` | Complete a resolution: supply overrides, approve/reject | resolution review | I2 | **N** | **P0** |
+| `/payments` | Payment/settlement records per order | finance | I4 | **N** | P1 |
+| `/refunds` | Refunds in flight and completed | finance/support | I4/I1 | **N** | P1 |
+| `/notifications` | Delivery log, failures, resend | notification ops | I2 | **N** | P2 |
 
 ### Resource management (reference data)
 
@@ -64,6 +69,23 @@ API surface (`apps/api/src/modules/admin.module.ts`): 10 endpoints — `exceptio
 **Rate cards are not ordinary CRUD.** They determine landed cost on live quotes. Editing one in place would retroactively change the basis of quotes already given. They need **versioned, effective-dated records with an activation command** — closer to a workflow than a resource, and the clearest example of why "generate CRUD from tables" is the wrong instinct. Flagged for Phase 10.
 
 **Organizations** (`/organizations`) are deliberately absent: Line B/C are platform-later, and an empty org surface implies a capability that doesn't exist (same reasoning as the front office's business surfaces).
+
+### Coverage against MASTER-PROMPT §PHASE 6's capability list
+
+MASTER-PROMPT enumerates ~39 candidate areas. Every one is either in the inventory above or deliberately excluded with a reason. **An earlier draft of this document silently omitted ten of them**; they are itemized here rather than quietly added, because a coverage claim is worthless if the list it was checked against was never written down.
+
+| Area | Disposition |
+|---|---|
+| operational overview | **Deliberately excluded.** The ranked queue *is* the overview. A separate KPI dashboard would compete with the queue for the home screen and violate the manage-by-exception RULE. If operational metrics are needed, they belong beside the queue, not instead of it |
+| exception queue · customer orders · procurement orders · shipments · ledger/finance · reconciliation · support cases · compliance/risk · audit logs · sandbox sessions · scenario management · integration health · customers · internal users · roles · permissions · routes · service zones · warehouses · marketplace config · rate cards | In inventory |
+| **product requests · product-resolution reviews** | **Added (P0)** — the `/resolutions` routes. Previously omitted; F9 shows why this matters |
+| **payments · refunds** | **Added (P1)** — order-scoped payment and refund records were folded into "finance," which conflated the double-entry ledger with the payment/refund records an operator actually searches by order |
+| **notification operations** | **Added (P2)** — delivery log, failures, resend. Depends on the notification system existing |
+| organizations · teams | **Deferred** — Line B/C (platform-later). Teams are a Line B org concept, not an internal-ops one |
+| countries · supported countries · customs configuration · restrictions | **Folded into `/config`** as reference-data screens. Called out explicitly because "restrictions" carries the import-eligibility data that Phase 5 identified as the product's worst failure mode — it is not merely cosmetic config |
+| payment providers · FX providers · logistics providers | **Folded into `/providers`** — one provider registry with a `port` discriminator, which is how the code already models them (`GET /providers` splits `port:provider`) |
+| warehouse/fulfillment | Partly `/shipments` (operational), partly `/config` (warehouse records) |
+| configuration/feature management | `/config` covers reference data; **feature flags have no home yet** and no flag system exists in the codebase — recorded as an open question rather than a route |
 
 ## Capability matrix
 
@@ -123,12 +145,18 @@ Every action, mapped to the capability that serves it. **This is the criterion "
 | See provider health | `breakerRegistry.snapshot()` via `GET /providers` | ✅ wired, no screen |
 | Quarantine / force-close a provider | *none* | ❌ missing command |
 | Add a carrier-status mapping | *none* — `normalizeCarrierStatus` logs unknowns for a human | ❌ missing |
+| **Complete a failed/uncertain product resolution** | `ManualResolutionStrategy` via `ResolutionContext.manualOverrides` | ⚠️ **exists, unreachable — nothing produces `manualOverrides`** (F9) |
+| **Review the product-resolution queue** | *none* — `NEEDS_REVIEW` appears nowhere in `apps/api/src` | ❌ missing |
+| Search payments / refunds by order | *none* — only the raw ledger, filterable by `refId` | ❌ missing |
+| Resend a failed notification | *none* — no notification system | ❌ missing |
 | Edit rate cards / routes / warehouses | *none* | ❌ missing |
 | Manage internal users and roles | *none* | ❌ missing (Phase 7) |
 | View an audit trail | timeline is persisted; no read surface | ⚠️ **data exists, no surface** |
 | Run/inspect a sandbox scenario | sandbox API exists; consumed only by the **front** office | ⚠️ exists, no operator surface |
 
-**Summary: 11 wired, 6 partial-or-orphaned, 9 missing.** The partials matter most — each is a capability already paid for that no operator can use.
+**Summary: 11 wired, 7 partial-or-orphaned, 12 missing.** The partials matter most — each is a capability already built and paid for that no operator can reach. Three of them (resolve exception, assign exception, complete a resolution) share a signature: domain logic and data model present, controller boundary never crossed.
+
+Also add to the Phase 7 permission list: `resolution:{read,complete}`, `payment:read`, `refund:read`, `notification:{read,resend}`.
 
 ## Per-screen state specification
 
