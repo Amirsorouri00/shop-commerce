@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 0, 1, 2, and 3 complete.** See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), and `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3). **Phase 4 (Amazon UAE PDP and product resolution) next.**
+**Phase 0, 1, 2, 3, and 4 complete.** See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3), and `docs/product/product-resolution.md` + `docs/ux/amazon-resolution-journeys.md` + `docs/architecture/product-resolution-architecture.md` (Phase 4). **Phase 5 (front office) next.**
 
 ## Approved product boundaries
 
@@ -46,6 +46,7 @@ Each gated integration must still ship with complete domain contract, port, sand
 
 ## Completed work packages
 
+- **Phase 4 product resolution** (`docs/product/product-resolution.md`, `docs/ux/amazon-resolution-journeys.md`, `docs/architecture/product-resolution-architecture.md`) — discovered that a full 4-tier resolution ladder (`api → structured → vision → manual`) with per-field provenance/confidence, cost-budgeted escalation, and risk propagation into pricing **already exists** in `platform/packages/commerce/`; Phase 4 formalizes and extends it rather than designing new. Nine Amazon UAE PDP archetypes modeled against it. Live-fetch research confirmed Amazon UAE blocks plain server-side fetching (6 of 7 attempts → HTTP 503), and surfaced that Amazon's PA-API 5.0 was deprecated 2026-05-15 in favour of a narrower-access Creators API — which changes the `api` tier from a credentials question to an availability question.
 - **Phase 3 journey architecture** (`docs/ux/journey-map.md`, `service-blueprint.md`, `state-matrix.md`) — 15 MVP-now journeys modeled to full depth (customer J1–J9, internal operator J10–J15) plus 4 platform-later journeys named directionally; verified against source (`order-state-machine.ts`'s exact 24-state/`TRANSITIONS`/`ALERTS`/`actionable` model, `admin.module.ts`'s exception-queue and RBAC enforcement, `scenario.ts`'s 12 sandbox scenarios, `packages/core/src/ports.ts`'s unwired `NotificationPort`). Confirmed and precisely located the two live "no dead ends" violations MASTER-PROMPT §PHASE 3 forbids: J7 (customer decision UI missing though backend transitions already support it) and J8/J12 (support/refund workflow missing though ledger/state machine/payment-port `refund` already anticipate it). Found one previously-unrecorded small gap: `ALERTS` has no copy for `REFUNDED`/`CANCELLED` terminal states.
 - **Phase 2 personas/accounts** (`docs/product/personas.md`, `jobs-to-be-done.md`, `account-and-organization-model.md`, `anti-personas.md`) — full actor roster across all four lines incl. internal operators; JTBD per actor; greenfield `User`/`PersonalAccount`/`Organization`/`OrganizationMembership`/`Role`/`Permission` model designed to make Line A MVP-now while keeping Line B/C additive; anti-personas traced to explicit compliance RULEs, not invented.
 - **Phase 0 assessment** (`docs/program/00-current-state-assessment.md`) — `handoff.md`'s claims spot-checked against source and confirmed accurate (24-state machine exact match, 120 test cases exact match, 5 apps / 11 packages confirmed, admin API surface confirmed). Full capability matrix produced. Key verified state: quote/auth/checkout/tracking/exception-queue/procurement-copilot/finance-ledger/sandbox are COMPLETE on sandbox adapters; real payment/procurement/logistics/FX providers are EXTERNAL-GATE as expected.
@@ -57,6 +58,14 @@ Each gated integration must still ship with complete domain contract, port, sand
 - None currently in progress. Phase 4 (Amazon UAE PDP and product resolution) is next and unblocked.
 
 ## Unresolved high-impact questions
+
+New from Phase 4:
+
+- **Live defect recorded, not fixed: `ApiResolutionStrategy` never triggers weight escalation.** It sets `weightKg` confidence to 0.6 with a comment claiming that is "deliberately below the escalation floor," but the floor is `MIN_FIELD_CONFIDENCE = 0.5` and the test is `confidence < floor` — so 0.6 passes and the `vision` tier (the only rung that can estimate true *shipping* weight) is never consulted. Verified nothing overrides `confidenceFloor` in production. Zero impact today (the `api` tier isn't wired), but a live margin defect the moment that gate clears, since freight is most of landed cost and catalogue weight systematically understates it. Three candidate fixes weighed in `docs/architecture/product-resolution-architecture.md`; decide in Phase 10/12 alongside the api-gate work.
+- **Amazon PA-API 5.0 deprecated (2026-05-15), superseded by a Creators API requiring an active Associates account with recent qualifying sales.** `marketplace.ts` asserts `productApi: true` for `amazon.ae` and existing docs treat the `api` tier as "blocked on credentials." Whether that capability still holds needs re-checking against Creators API's actual product-data coverage — not investigated in depth this pass.
+- **Amazon UAE blocks plain server-side fetching** (empirically confirmed). The `structured` and `vision` tiers both need a fetcher Amazon will serve (realistic browser fingerprint/session, or a licensed fetching provider) behind the existing `PageFetcher` seam. No pipeline change required.
+- **Seven fields the resolution model lacks** (`selectableVariations`, `fulfillmentParty`, `itemCondition`, `originalPrice`/`discountPercent`, `quantityRestrictions`, `estimatedMarketplaceDelivery`, `eligibility`/`restrictions`). Highest-consequence is **eligibility/restrictions** — nothing checks import-eligibility at resolution today, so an ineligible item resolves, quotes, and fails at customs *after payment*.
+- **Not verified against a rendered Amazon UAE PDP.** Direct fetch was blocked, so structural claims about image galleries, badge placement, and discount markup come from search-snippet evidence and general marketplace knowledge, not a live page. Re-verify with browser automation before Phase 5 commits to layout.
 
 New from Phase 3:
 
@@ -88,3 +97,4 @@ Carried forward from Phase 0/1/2 (see the linked docs for detail):
 - Phase 1 product boundary: `docs/product/product-boundary.md`, `docs/product/capability-map.md`, `docs/product/business-lines.md`, `docs/product/mvp-vs-platform.md`
 - Phase 2 personas/accounts: `docs/product/personas.md`, `docs/product/jobs-to-be-done.md`, `docs/product/account-and-organization-model.md`, `docs/product/anti-personas.md`
 - Phase 3 journey architecture: `docs/ux/journey-map.md`, `docs/ux/service-blueprint.md`, `docs/ux/state-matrix.md`
+- Phase 4 product resolution: `docs/product/product-resolution.md`, `docs/ux/amazon-resolution-journeys.md`, `docs/architecture/product-resolution-architecture.md`
