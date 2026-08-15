@@ -487,7 +487,9 @@ Implement responsible non-gated behavior and sandbox fixtures for gated integrat
 
 ---
 
-# PHASE 5 — Front office
+# PHASE 5 — Front office (product/UX architecture)
+
+> **Sequencing clarification (added 2026-08-15, authoritative).** This phase is **discovery and design only**: information architecture, route/screen inventory, interaction specification, state coverage, responsive behaviour, trust/conversion patterns, and journey-to-screen mapping. **Do not perform mass frontend implementation here.** Broad production UI implementation waits on the design system (Phase 8) and on the consistent implementation plan produced by Phases 5–12. See `docs/program/PROJECT-STATE.md` § "Program sequencing clarification".
 
 Design a mature customer application using **Next.js**.
 
@@ -547,7 +549,9 @@ Do not make decorative redesign decisions without product/UX rationale.
 
 ---
 
-# PHASE 6 — Backoffice operating model and Vite admin
+# PHASE 6 — Backoffice operating model and Vite admin (discovery/design)
+
+> **Sequencing clarification (added 2026-08-15, authoritative).** This phase **discovers and designs** the backoffice operating model, information architecture and UX. **Do not perform mass implementation here.** The Vite + React migration and screen build-out are implementation work packages sequenced by Phase 12, after the design system (Phase 8) and RBAC (Phase 7). See `docs/program/PROJECT-STATE.md` § "Program sequencing clarification".
 
 Build a mature operations-grade backoffice using **Vite + React**.
 

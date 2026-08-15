@@ -55,7 +55,18 @@ Each gated integration must still ship with complete domain contract, port, sand
 
 ## Active work packages
 
-- None currently in progress. Phase 4 (Amazon UAE PDP and product resolution) is next and unblocked.
+- **Phase 5 — front-office product/UX architecture** (in progress). Discovery/design only, per the sequencing clarification below: information architecture, route/screen inventory, interaction specification, state coverage, responsive behaviour, trust/conversion patterns, and journey-to-screen mapping. **No mass frontend implementation in this phase.**
+
+## Program sequencing clarification (authoritative)
+
+Recorded 2026-08-15 to resolve an ambiguity in `docs/program/MASTER-PROMPT.md`, whose phase titles ("Front office", "Backoffice operating model and Vite admin") could be read as licence to implement. They are not. Mirrored into MASTER-PROMPT.md §PHASE 5/§PHASE 6 so it survives context compaction.
+
+- **Phase 5 = front-office product/UX architecture.** IA, route/screen inventory, interaction spec, state coverage, responsive behaviour, trust/conversion patterns, journey→screen mapping. Not mass implementation.
+- **Phase 6 = backoffice operating model discovery/design.** Operating model, IA, and UX before any implementation. Not mass implementation.
+- **Phase 8 (design system) must complete before broad production UI implementation.** Screens built ahead of tokenized primitives would have to be rebuilt.
+- **Major UI/backend implementation begins only after** discovery/design (5, 6), RBAC (7), design system (8), sandbox (9), backend reconciliation (10), traceability (11), and work-package decomposition (12) have produced an internally consistent implementation plan.
+
+This does not change any phase's content or ordering — it fixes what "produce a mature application" means at each stage. It is consistent with MASTER-PROMPT's own §First execution sequence ("Only after those steps should major implementation begin") and §PHASE 5's "Discover the complete information architecture before mass implementation"; the phase titles were the only ambiguity.
 
 ## Unresolved high-impact questions
 
