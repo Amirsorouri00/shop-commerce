@@ -11,7 +11,7 @@ Every MVP-now journey element from `docs/ux/journey-map.md` (J1–J9), mapped to
 | Journey | Screen(s) | Elements mapped | Unmapped |
 |---|---|---|---|
 | J1 resolve | `/` | entry, intent, prerequisites, happy, alternates, loading, validation, missing-data, outage, cancel, retry, recovery, async, terminal | none |
-| J2 quote | `/` | all, incl. viability-block and FX outage | none |
+| J2 quote | `/` | all, incl. viability-block and FX outage | none *(was unmapped — see revision log)* |
 | J3 auth | `/checkout`, `/login` | all; SMS-outage fallback documented as gap | none |
 | J4 addresses | `/addresses`, `/checkout` | all; in-flight-order deletion documented as gap | none |
 | J5 checkout/pay | `/checkout`, `/checkout/return` | all, incl. duplicate callback, abandoned tab | none |
@@ -69,6 +69,10 @@ The most important check: **no UI state may exist without corresponding backend/
 | Fulfilment party line | `fulfillmentParty` field | Phase 4 + spec |
 | Public tokenized tracking (J9) | tokenized endpoint | IA (deferred, Line B) |
 | `REFUNDED` / `CANCELLED` closure copy | `ALERTS` entries | spec + `state-matrix.md` §2 |
+| **Attention badge + list-level exception prioritization** | `actionable`/alert-code on `orderSummarySchema` and the list endpoint | IA nav model + spec `/orders` |
+| **Refund status inside a support case** | case→order state read | spec `/support/<id>` |
+
+**On the attention badge** (added after independent review): `orderSummarySchema` (`packages/contracts/src/schemas.ts:246-254`) carries `id, publicRef, state, title, imageUrl, finalPrice, createdAt` — no actionable/alert field. `alertFor()` is wired only at the order-*detail* endpoint. Two options: (a) expose `actionable`/alert-code on the summary, or (b) derive it client-side from `state`, which the summary does carry. **(a) is correct.** `order-state-machine.ts` lives in `apps/api/src/domain/`, not a shared package, so the web app cannot import the `actionable` mapping — deriving client-side would mean *duplicating domain logic in the frontend*, exactly what `CLAUDE.md`'s "contracts are the single source of truth" rule exists to prevent, and it would drift the moment a state's actionability changes.
 
 **Result: zero undocumented UI states.** Every state either has backing behaviour today or appears in the table above with an owner phase. Notably, the J7 decision UI is the only case where the *domain* already fully supports the action (`PRICE_CHANGED → PROCUREMENT_PENDING | REFUND_PENDING` are legal edges in `TRANSITIONS`) and only the HTTP surface is missing — which is why it is the cheapest high-value package.
 
@@ -82,15 +86,29 @@ Cross-read of Phase 3, 4, and 5 artifacts for incompatible assertions.
 - **Resolution ladder stages.** MASTER-PROMPT names seven stages; the code implements four tiers. Already recorded and reasoned in `product-resolution.md` (browser fetch folded into structured/vision; customer confirmation moved to the frontend). Phase 5 applies that resolution consistently and introduces no new conflict.
 - **Sandbox scenario count** (12) consistent between `service-blueprint.md` and the Phase 5 spec.
 
-**One genuine tension found and recorded, not silently resolved:** the design-intelligence database recommends *Vibrant & Block-based* styling for the "E-commerce" product type, which conflicts with this product's trust-and-transparency positioning (link-first, no catalog, no merchandising). Recorded in the spec's design-intelligence section as a **Phase 8 input with a recommendation**, since Phase 8 owns styling — not resolved unilaterally here.
+**Two genuine tensions found and recorded, not silently resolved:**
 
-**Result: no unresolved contradictions.**
+1. **Phase 3 vs. Phase 4 on multi-seller offers.** `journey-map.md` J1 originally said "default to the authoritative/lowest-risk offer, **list alternatives**"; `amazon-resolution-journeys.md` Archetype 3 says **do not** surface a seller picker at MVP, because it is a marketplace-browsing affordance that the link-first RULE cuts against. Phase 4 supersedes Phase 3 here (correct per the source-of-truth hierarchy: newly accepted decisions outrank earlier artifacts). **This review initially treated "no picker by design" as settled fact without recording the supersession** — corrected: J1's alternate-path line now carries an explicit superseded-by note pointing at Archetype 3.
+2. **Styling direction.** The design-intelligence database recommends *Vibrant & Block-based* for the "E-commerce" product type, which conflicts with this product's trust-and-transparency positioning (link-first, no catalog, no merchandising). Recorded in the spec's design-intelligence section as a **Phase 8 input with a recommendation**, since Phase 8 owns styling — not resolved unilaterally here.
+
+**Result: no unresolved contradictions** — both are now explicitly recorded with a chosen resolution and rationale.
 
 ## 5. P0 / P1 triage
 
 ### Phase 5 artifact issues
 
-**None open.** All four checks above pass: no unmapped journeys, no orphan screens (every route in the inventory serves a listed journey), no undocumented UI states, no unresolved contradictions.
+**Four found by independent review, all now closed.** The first version of this document self-certified all four checks as passing; two of those claims were falsified by the artifacts being certified. Recording what was wrong, because a review that only ever confirms its own work is worthless:
+
+| # | Defect | Status |
+|---|---|---|
+| A1 | **False "no orphan screens" claim.** `/settings` was listed with no journey and appeared in no mapping table — a genuine orphan. | Closed: recorded as an explicit cross-cutting exception, with the underlying **Phase 3 journey-taxonomy gap** (no journey covers account self-management) named rather than hidden |
+| A2 | **False "no unmapped journey elements" claim.** J2's viability-block — required by `journey-map.md` as both an alternate path and a terminal state — had no row in the `/` state table; "viability" appeared nowhere in either Phase 5 doc. | Closed: "Viability-blocked" row added, explicitly distinguished from "Ineligible" (economics vs. compliance — conflating them would tell a customer their legal item is prohibited) |
+| A3 | **Missed UI-state-without-backend.** The attention badge and list-level exception prioritization need per-order actionability at *list* granularity, which `orderSummarySchema` does not carry. | Closed: added to §3 with the contracts-vs-client-derivation analysis |
+| A4 | **Unrecorded Phase 3 vs. Phase 4 contradiction** on multi-seller offers, despite §4 existing to catch exactly that. | Closed: supersession recorded in both §4 and `journey-map.md` J1 |
+
+Also closed: `/support/<id>` had no refund-status display despite J8's happy path ending in a refund (§3, spec).
+
+**Now open: none.** That claim is worth more than the original one because it survived an adversarial pass.
 
 ### Product issues discovered by Phase 5 (owned by later phases)
 
@@ -114,7 +132,11 @@ Cross-read of Phase 3, 4, and 5 artifacts for incompatible assertions.
 
 ## 6. Method and limitations
 
-**Specialist capabilities used:** the installed `ui-ux-pro-max` design-intelligence database (domains `ux`, `product`) was queried for checkout/validation/async and accessibility guidance; nine material requirements were added to the interaction spec and one styling tension recorded for Phase 8. A reviewer subagent was dispatched for an independent adversarial pass; it had not reported by the time this review completed, so **the four checks above were performed directly** against source and artifacts rather than waiting on it. If its findings arrive and contradict anything here, they should be reconciled into this document rather than accepted or discarded wholesale.
+**Specialist capabilities used:** the installed `ui-ux-pro-max` design-intelligence database (domains `ux`, `product`) was queried for checkout/validation/async and accessibility guidance; nine material requirements were added to the interaction spec and one styling tension recorded for Phase 8.
+
+**Independent adversarial review.** A reviewer subagent audited this document and the artifacts it certifies. It found four defects (A1–A4 in §5), two of which directly falsified this document's own pass claims. Each was verified against source before being accepted — none were taken on trust — and all four are now closed. It spot-checked eight `file:line` citations across the Phase 5 docs and found no citation defects.
+
+**Revision log:** v1 self-certified four passing checks. v2 (this version) corrects two false pass claims (A1 orphan screen, A2 unmapped journey element), adds two items the original checks missed (A3 list-level actionability, A4 Phase 3/4 supersession), and adds refund-status display to `/support/<id>`. The §1 table's "none unmapped" entry for J2 is accurate only as of v2.
 
 **Limitations, stated plainly:**
 - Layout-level decisions are **not** verified against a rendered Amazon UAE PDP — direct fetch was blocked during Phase 4 (six of seven attempts returned HTTP 503). Product-card layout should be re-verified with browser automation before implementation.

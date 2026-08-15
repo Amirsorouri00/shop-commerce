@@ -31,6 +31,7 @@ These hold on every screen; per-screen sections below note only departures.
 | Resolved (`NEEDS_REVIEW`) | Same, **plus per-field markers on the fields actually soft** — generalizing the existing weight badge (`ProductCard.tsx:14-15,43-47`, threshold `< 0.7`) using `missingFields`, already on the wire. Today's single generic banner (`page.tsx:138-143`) names weight regardless of which field is soft |
 | Unavailable | Block the quote (already `page.tsx:145-147`). **Distinguish confirmed-unavailable from unconfirmed** — `assemble` maps absent availability to `false` (`resolution.ts:286`), so today "we couldn't check" reads as "not available" |
 | Ineligible | Blocked with a specific reason. **No surface today** — Phase 4 archetype 7, highest-consequence gap: an ineligible item currently resolves, quotes, and fails at customs after payment |
+| **Viability-blocked** | Quote below the v0.3 minimum-order-value threshold → **explicit "this item alone isn't cost-effective to ship" framing, not a bare block** (J2 alternate path + terminal state; viability-gate RULE, `CLAUDE.md`). **Distinct from Ineligible**: ineligible means *we may not* import this (compliance/customs); viability-blocked means *it isn't worth* shipping alone (economics). Conflating them would tell a customer their perfectly legal item is prohibited. Offer the bundling/manual-review path rather than a dead end (routes toward J8, itself a gap) |
 | Failed (`FAILED`) | Explicit failure + retry + what to try instead. Never a generic error |
 | Outage | FX/rate unavailable → quote blocked with retry, never a stale rate shown as final |
 | Ladder exhausted | "A specialist is checking this" with an expectation of when — the one path where the honest answer is that a human finishes it |
@@ -120,6 +121,8 @@ Notable states: empty → prompt (not blank); serviceability validation shared w
 Case list, new case, case thread. **No API exists** — the largest net-new backend surface implied by Phase 5.
 
 Notable states: empty → prompt; case optionally bound to an order; async by nature (waiting on an operator) — the journey most damaged by the missing notification system, since neither side learns of a reply; stalled-case SLA undesigned (shares a root with J7's timeout — design once, not twice).
+
+**Refund status within a case.** J8's happy path can end in a refund, so `/support/<id>` must show refund *status*, not just the fact that one was requested: requested → in progress (`REFUND_PENDING`) → completed (`REFUNDED`), with amount and expected timescale. This must read from the order's own state rather than a case-local copy — the order state machine is the single source of truth, and a case showing "refunded" while the order says `REFUND_PENDING` would be a trust failure at the worst moment. Resolution-without-refund and withdrawn cases need equally explicit closure.
 
 ### `/settings` — new
 
