@@ -356,7 +356,7 @@ Delegated buyer and first-time-buyer are usage variants of P1, folded into J3/J6
 - **Intent:** "Grant exactly the access a person needs, see who has what, revoke it instantly and provably."
 - **Prerequisites:** admin role, itself subject to the same model it manages (careful bootstrap consideration).
 - **Happy path:** find user → assign role(s) scoped appropriately (`PLATFORM` vs `ORGANIZATION` per `account-and-organization-model.md`'s already-decided scoping) → change takes effect immediately, backend-enforced (not just hiding nav — MASTER-PROMPT §PHASE 7 explicit requirement).
-- **Alternate paths:** organization-scoped role assignment (Line B/C, platform-later) vs. platform-scoped internal-ops role assignment (MVP-now, `kind=INTERNAL_OPS`).
+- **Alternate paths:** organization-scoped role assignment (Line B/C, platform-later) vs. platform-scoped internal-ops role assignment (MVP-now). *(Updated per ADR-001: internal ops is `PLATFORM` scope, not `Organization(kind=INTERNAL_OPS)`.)*
 - **Loading:** user/role list fetch.
 - **Validation:** cannot remove the last admin (lockout prevention); cannot self-escalate without a second approver (reasonable control, undesigned in detail).
 - **Empty states:** n/a.

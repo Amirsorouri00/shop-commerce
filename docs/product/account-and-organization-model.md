@@ -1,5 +1,11 @@
 # Account & Organization Model
 
+> ⚠️ **PARTIALLY SUPERSEDED by `docs/adr/ADR-001-internal-ops-is-not-an-organization.md` (Phase 7, accepted 2026-08-15).**
+>
+> This document recommended modeling internal operations as `Organization(kind=INTERNAL_OPS)` at medium confidence, and explicitly asked Phase 7 to "ratify or reject with an ADR." **Phase 7 rejected it.** Internal operations is now modeled as `PLATFORM` **scope**, not as an Organization; internal operators hold platform-scoped role assignments and have no `Organization` or `OrganizationMembership`. `Organization.kind` carries only `MERCHANT` and `ENTERPRISE`.
+>
+> The reasoning (see ADR-001): an `Organization` means "a tenant whose data is isolated from other tenants," and internal ops is cross-tenant by definition — Phase 6's finance-operator finding (F1) showed an operator's access problem is about which *capabilities* they hold platform-wide, not which tenant they belong to. Everything else in this document stands, including the `User` / `PersonalAccount` / `Organization` / `OrganizationMembership` separation, the `PLATFORM` vs `ORGANIZATION` role scoping, and the decision to shape the model for Line B/C from the start. **Read every `kind=INTERNAL_OPS` reference below as "platform-scoped grant."**
+
 > Phase 2 of `docs/program/MASTER-PROMPT.md`. This is the identity-side design of `business-lines.md` §D's "central architectural bet": generalize the shared spine now, for Line A only, so Lines B/C become thin layers later rather than a rebuild. Per `docs/program/00-current-state-assessment.md` §0.3.1, today's schema has only `customers`, `identities`, `operators` — this is greenfield design, not refinement.
 
 ## Design principle
@@ -20,9 +26,9 @@ The Line-A individual customer account context. One-to-one with a `User` that ha
 
 ### `Organization`
 The Line B/C account context, and (see note below) the natural home for internal operator "teams" too.
-- Fields: `id`, `kind` (`MERCHANT` | `ENTERPRISE` | `INTERNAL_OPS`), `name`, `status` (`active` | `suspended` | `pending_review`), `complianceTier`.
-- `kind=INTERNAL_OPS` is a deliberate choice: today's flat `operators` table (Phase 0 §0.3.1) is really "members of one implicit internal organization." Modeling internal ops as an `Organization` with `kind=INTERNAL_OPS` means **one** membership/role mechanism serves I2–I6 (`personas.md`) and P3–P8 (merchant/enterprise) instead of two parallel systems — directly serves Phase 7's RBAC generalization. This is an architectural recommendation for Phase 7 to ratify or reject with an ADR, not a decision this document is authorized to lock in alone (MASTER-PROMPT §5 — implementation follows accepted ADRs, not the reverse).
-- **MVP-now:** the schema and `kind` enum exist; only `INTERNAL_OPS` is actually populated (migrated from `operators`). `MERCHANT`/`ENTERPRISE` rows are platform-later (Line B/C), per `mvp-vs-platform.md`.
+- Fields: `id`, `kind` (`MERCHANT` | `ENTERPRISE` — ~~`INTERNAL_OPS`~~ removed by ADR-001), `name`, `status` (`active` | `suspended` | `pending_review`), `complianceTier`.
+- ~~**REJECTED by ADR-001.**~~ The original reasoning is preserved for the record: `kind=INTERNAL_OPS` is a deliberate choice: today's flat `operators` table (Phase 0 §0.3.1) is really "members of one implicit internal organization." Modeling internal ops as an `Organization` with `kind=INTERNAL_OPS` means **one** membership/role mechanism serves I2–I6 (`personas.md`) and P3–P8 (merchant/enterprise) instead of two parallel systems — directly serves Phase 7's RBAC generalization. This is an architectural recommendation for Phase 7 to ratify or reject with an ADR, not a decision this document is authorized to lock in alone (MASTER-PROMPT §5 — implementation follows accepted ADRs, not the reverse).
+- **MVP-now (as amended by ADR-001):** the `Organization` schema exists but is **entirely unpopulated** at MVP. Internal operators migrate from `operators` to `User` + `PLATFORM`-scoped role assignments, not to organization rows. `MERCHANT`/`ENTERPRISE` rows are platform-later (Line B/C), per `mvp-vs-platform.md`.
 
 ### `OrganizationMembership`
 Join entity: `userId`, `organizationId`, `roleId` (see `Role` below), `status` (`active` | `invited` | `suspended` | `removed`), `joinedAt`.
@@ -39,7 +45,7 @@ Extends `Organization` where `kind=MERCHANT`: wallet balance (see money-model no
 Extends `Organization` where `kind=ENTERPRISE`: credit terms, deposit/milestone policy, compliance tier, assigned account manager (I5/internal relationship).
 
 ### `Role` / `Permission` / `RolePermission`
-- `Role` has a `scope`: `PLATFORM` (applies within `kind=INTERNAL_OPS` organizations — ops, finance, admin, compliance, matching `personas.md` I2–I6) or `ORGANIZATION` (applies within a specific `MERCHANT`/`ENTERPRISE` org — owner, staff, buyer, finance_approver, procurement_operator, matching P5–P8).
+- `Role` has a `scope`: `PLATFORM` (applies platform-wide, held by internal operators directly with **no organization involved** per ADR-001 — ops, logistics, support, finance, compliance, admin, matching `personas.md` I1–I6) or `ORGANIZATION` (applies within a specific `MERCHANT`/`ENTERPRISE` org — owner, staff, buyer, finance_approver, procurement_operator, matching P5–P8).
 - `Permission` is a fine-grained action string (`order.transition`, `refund.issue`, `ledger.view`, `wallet.topup`, ...).
 - `RolePermission` is the join table. This is the direct replacement for today's `@Roles('ops','admin')` decorator pattern (Phase 0 §0.3.1) — full design and migration is Phase 7's job; this document only establishes that `Role` is scoped and organization-aware from the start, because that's an identity-model decision, not an authorization-logic one.
 - **MVP-now:** enough of this model to stop blocking Line A launch (`mvp-vs-platform.md` item 4) — likely just seeding `PLATFORM`-scope roles for the existing ops/finance/admin set, backed by real `Role`/`Permission` rows instead of a hardcoded string enum. Full `ORGANIZATION`-scope roles ship with Line B.
@@ -56,7 +62,7 @@ Covers P8 (finance approver)'s approval-before-spend job (`jobs-to-be-done.md`) 
 |---|---|---|
 | `User` | Yes — replaces/generalizes `identities` | — |
 | `PersonalAccount` | Yes — replaces `customers` | — |
-| `Organization` | Schema exists; only `kind=INTERNAL_OPS` populated (replaces `operators`) | `kind=MERCHANT`/`ENTERPRISE` populated |
+| `Organization` | Schema exists; **unpopulated** (ADR-001 — internal ops uses `PLATFORM` grants, not org rows) | `kind=MERCHANT`/`ENTERPRISE` populated |
 | `OrganizationMembership` | Yes, for internal ops only | Yes, for merchant/enterprise org members |
 | `CustomerProfile` | Likely merged into `PersonalAccount` — confirm in Phase 10 | — |
 | `MerchantProfile` | — | Line B |
@@ -71,4 +77,4 @@ Covers P8 (finance approver)'s approval-before-spend job (`jobs-to-be-done.md`) 
 
 ## Open question for Phase 7 / an ADR
 
-Whether `kind=INTERNAL_OPS` organizations are the right home for internal role scoping (vs. keeping internal ops as a separate, non-`Organization` concept) is a real architectural fork, not a settled decision — recorded here per MASTER-PROMPT §1 (assumption: unifying is better because it collapses two RBAC systems into one; confidence: medium — the alternative of a dedicated internal-roles table is simpler for a domain that will genuinely never need multi-tenant org features like billing or branding; reversal cost: low, since no code depends on either choice yet). Phase 7 should ratify one path with an ADR before schema work begins in Phase 10/12.
+~~Whether `kind=INTERNAL_OPS` organizations are the right home for internal role scoping (vs. keeping internal ops as a separate, non-`Organization` concept) is a real architectural fork, not a settled decision~~ — **RESOLVED by ADR-001 (Phase 7): internal ops is `PLATFORM` scope, not an Organization.** The medium-confidence recommendation recorded here was rejected on Phase 6 evidence. The reversal cost noted here ("low, since no code depends on either choice yet") held — the decision landed before any schema work, exactly as intended.
