@@ -202,3 +202,41 @@ Not asserted — run, with output observed.
 **So a green suite is not evidence against this register.** It is evidence that the *tested* subsystems are sound, and a measurement of where tests are absent: the domain state machine, payment settlement, and every sandbox isolation boundary.
 
 **Not run, and why:** database migrations, integration tests, and E2E require Postgres, Redis, RabbitMQ, and MinIO via `docker compose`. Not started in this phase — Phase 10 is architecture, and the running-service verification belongs with the Phase 12 packages that change behaviour.
+
+---
+
+## Review record
+
+### Review A — self completeness
+
+Found five brief sections under-served (events/outbox, worker boundaries, persistence boundaries, support, contracts) and added them. **Found no contradictions** — consistent with every phase since 5.
+
+### Review B — independent adversarial
+
+The most severe review of the program. All findings below were verified against source before acceptance; **none were rejected**.
+
+**Errors in this phase's own analysis:**
+
+| # | Claim | Reality |
+|---|---|---|
+| R1 | "**Exactly one** pre-payment refund path" | **Two.** `QUOTED → PRICE_CHANGED → REFUND_PENDING` (`:18`, `:33`) is a second, and **it survives D1/D2 entirely** — so the proposed topology fix did not close P0-DOMAIN-001. The eligibility predicate is load-bearing, not defence-in-depth |
+| R2 | "Session id in the event envelope… already works this way," cited to `worker/main.ts:48-55` | **False, and cited to lines showing something else.** The real mechanism is an **order-row lookup** keyed on `event.payload.orderId` (`:100-108`). **Events without `orderId` — much `payment.*`/`exception.*` traffic — never enter sandbox context at all.** This was the weakest claim: load-bearing, wrong, and it justified designing *no* event propagation |
+| R3 | "The only functioning settlement path is the unauthenticated one" | **Three paths exist.** `/v1/dev/gateway/settle` (`dev-gateway.module.ts:27`) was missed entirely — `@Public`, settling the **default** provider — though correctly production-gated, unlike the sandbox route |
+| R4 | Notification dedupe "exactly right… do not rewrite" | **Wrong, and it inverts.** `once()` marks processed **before** the handler and commits independently, so a throwing handler permanently suppresses redelivery — **at-most-once**, while the module docstring and §9a both claim at-least-once. A correctness defect in the event backbone |
+| R5 | Migration "additive, no behaviour change" | New states break **four** state-keyed collections — `TERMINAL_STATES`, `EXCEPTION_STATES`, `STATE_TO_STEP_INDEX`, `ALERTS`. `alertFor()` would return null for both new terminals, contradicting D1's own claim that `UNAVAILABLE` carries customer copy |
+| R6 | Concealment channel framed as a **future** ordering risk | **Live today.** `repositories.ts:249` already excludes sandbox rows and `schemas.ts:323` defaults to `exclude`, while the client can set the tag. A customer can hide a real order from operator search **now** |
+| R7 | Event producers for `product.resolved`, `product.resolution_failed`, `fx.updated` | **Fabricated** — those constants have no producers. Also omitted `order.created` and `order.state_changed` (the latter has no consumer) |
+| R8 | "Finance blocked" | **Imprecise.** Finance *is* permitted at the two finance handlers; it is blocked from **order/customer** endpoints |
+| R9 | "No persistence exposed" | `FinanceService.ledger()` hand-emits `seq`/`txnId` with no DTO |
+| R10 | `RESOLUTION_REVIEW → QUOTED` | Should be `→ QUOTING`; review resumes resolution, it does not produce a quote |
+| R11 | Permission vocabulary used throughout | **Does not exist.** Roles are `ops\|finance\|admin` string equality. Every permission named is a design target, and the role→permission migration gates them all |
+| R12 | `sandbox:control:*` proposed | Contradicts this program's own no-wildcard rule. Enumerated instead |
+| R13 | New order states | **Duplicate a persisted enum** — `productRequest.status` already carries `NEEDS_REVIEW\|FAILED`. The God-state-machine test had to be applied for real: resolution status stays on `ProductRequest` |
+| R14 | Financially impossible edges | `OUT_OF_STOCK → CANCELLED`, `PRICE_CHANGED → CANCELLED`, `CUSTOMER_ACTION_REQUIRED → CANCELLED` all terminate a **paid** order with no refund. D1 makes this worse |
+| R15 | Unbounded cycles | Three retry cycles with no cap — harmless while operator-driven, runaway once automated |
+| R16 | `PAID` treated as a resting state | Never observable; `settlePayment` moves to `PROCUREMENT_PENDING` in the same transaction |
+| R17 | Citations to "phase brief §N" | `MASTER-PROMPT.md`'s Phase 10 section has **no numbered subsections**. Those citations point at the acceptance-criteria message, not the repo file, and should say so |
+
+**Also flagged and accepted:** `availableActions` has no producer, consumer, or test anywhere; `@Idempotent` covers four commerce routes while admin `transition`/`reprice` post ledger entries with none; both gateway settle routes swallow all exceptions and 302 regardless; `@Body()` on those routes is raw with no `zodBody`; `buildStoreStrategies` registers **nothing** in production, not "only the stub."
+
+**The failure mode, stated plainly.** Phase 9's was unverified assertions about code. Phase 10's is subtler and worse: **claims that were verified but under-searched** — I opened `order-state-machine.ts` and still missed a second refund path; I read `worker/main.ts` and described a mechanism it does not implement. Opening the file is necessary and insufficient; the discipline required is *enumerating* the search space (all edges into a state, all settle routes, all state-keyed collections) rather than confirming the first instance found.

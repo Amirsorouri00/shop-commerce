@@ -13,6 +13,8 @@
 3. **Application commands receive `SandboxContext` from the resolved request context**, never from raw headers. `createOrder` stops reading `@Headers` entirely.
 4. **The tag is written by infrastructure, not passed by callers**, and is **immutable once set** — no code path may change or clear it.
 
+**A further hole §1 does not close on its own:** `SandboxController` is `@Public()` at **class level** (`sandbox.module.ts:111`), so session create/advance/reset/delete are anonymous. §1 requires the session to "belong to the authenticated actor" — but **`SandboxSession` has no owner field**, and neither did the migration table in `backend-domain-api-reconciliation.md` §9b. Adding `createdBy` is a prerequisite for ownership checks, not an enhancement.
+
 **Why fail-closed on an invalid header matters more than it appears:** the current fallthrough (`sandbox-routing.ts:52-58`) means an expired session silently executes against **production adapters with production credentials** while the order still looks like sandbox data. Failing the request is both safer and a better demo experience — "your session expired" is actionable; an invisible crossover is not.
 
 ## 2. Context propagation
@@ -24,8 +26,8 @@
 | Request context | ambient `SandboxContext` (existing mechanism via `@xb/observability`) |
 | Application command | explicit field on the command object — commands are testable without ambient state |
 | Persistence | infrastructure writes the tag; repositories never accept it from a caller |
-| Events | **session id in the event envelope** — this is what lets the worker route correctly, and it already works this way |
-| Workers | `routeByContext` reads the envelope (existing, verified `apps/worker/src/main.ts:48-55`) |
+| Events | **CORRECTED — the session id is *not* in the event envelope.** An earlier version of this table claimed it was and cited lines showing something else. **Actual mechanism:** `once()` reads `event.payload.orderId`, loads the **order row**, and takes `order.sandboxSessionId` from it (`apps/worker/src/main.ts:100-108`). **Consequence:** any event whose payload lacks `orderId` — much `payment.*` and `exception.*` traffic — **never enters sandbox context at all** and runs against production adapters. Putting the session id in the envelope is therefore *required work*, not an existing property |
+| Workers | `routeByContext` binds ports (`worker/main.ts:48-55`); the session lookup is the order-row read above |
 | Provider calls | adapter selection by ambient context (existing) |
 | Observability | correlation id + session id on every log line and audit record |
 
@@ -58,6 +60,8 @@
 | **Sandbox control plane** | make the simulated provider *do something* | sandbox permission | **no — never directly** |
 | **Simulated provider callback** | the sandbox gateway emits a callback | signature (sandbox verifier) | yes, **via the normal ingestion path** |
 | **Business payment API** | customer starts a payment | customer auth + idempotency | yes, via application service |
+
+**A third settlement path exists and must be included:** `POST /v1/dev/gateway/settle` (`dev-gateway.module.ts:27,74-82`), `@Public()`, settling the **default** provider `'stub'`. It is **correctly production-gated** (404 outside development) and its comment shows the right instinct — the provider name is hard-coded *because* the endpoint is unauthenticated. **It is the pattern the sandbox route should have copied.** Retiring the sandbox route does not close it; in development all three paths remain open.
 
 **Corrections required:**
 

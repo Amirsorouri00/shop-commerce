@@ -84,7 +84,11 @@ Eligibility requires: a **settled** payment exists for the order; refundable amo
 
 **This must be a domain check, not a controller guard.** The worker, the operator command, and any future automated path all need it, and a controller-level check protects only one of the three.
 
-With D1 and D2 applied, every remaining edge into `REFUND_PENDING` originates post-`PAID`, so the eligibility check becomes a defence-in-depth invariant rather than the sole protection — which is the right relationship between topology and predicate.
+**CORRECTED — this claim was false.** An earlier version said that with D1 and D2 applied "every remaining edge into `REFUND_PENDING` originates post-`PAID`," making eligibility mere defence-in-depth. It does not: **`QUOTED → PRICE_CHANGED → REFUND_PENDING`** (`:18`, `:33`) is a second pre-payment refund path that the `OUT_OF_STOCK` split leaves entirely untouched.
+
+Splitting `PRICE_CHANGED` the same way was considered and **rejected** — unlike `OUT_OF_STOCK`, it is genuinely one concept (the marketplace price moved) that can legitimately occur before or after payment, and the customer decision is the same in both cases; only the financial consequence differs.
+
+**Therefore the eligibility predicate is load-bearing, not defence-in-depth.** Topology alone cannot close both paths without splitting a concept that should not be split. D3 is the primary protection and D1/D2 reduce its surface.
 
 ### D4 — Server-authoritative available actions, expressed as business actions
 
@@ -122,7 +126,7 @@ This is what makes `canAcceptPriceChange` (the phase brief's example) a better c
 | `QUOTING` | quote requested | yes | **extended by D2** | no | **wedge fixed** |
 | `QUOTED` | quote produced | yes | `AWAITING_PAYMENT`, `PRICE_CHANGED`, `CANCELLED` | no | `QUOTED → PRICE_CHANGED` legal but only procurement sets it — see §6 |
 | `AWAITING_PAYMENT` | checkout | yes | `PAID`, `PAYMENT_FAILED`, `CANCELLED` | no | |
-| `PAID` | settlement | yes (`settlePayment`) | `PROCUREMENT_PENDING` only | no | `PAID ≠ PURCHASED` structurally enforced |
+| `PAID` | settlement | yes (`settlePayment`) | `PROCUREMENT_PENDING` only | no | `PAID ≠ PURCHASED` structurally enforced. **Never observable as a resting state** — `settlePayment` (`commerce.module.ts:355-382`) transitions to `PROCUREMENT_PENDING` in the *same transaction*, so no query ever sees `PAID`. It is a ledger checkpoint, not a status |
 | `PROCUREMENT_PENDING` | after `PAID` | yes | `PURCHASED`, `PRICE_CHANGED`, `OUT_OF_STOCK`, `PROCUREMENT_FAILED` | no | |
 | `PURCHASED` | procurement confirm | yes | `SELLER_PROCESSING`, `PROCUREMENT_FAILED` | no | |
 | transit states ×6 | carrier events | yes | forward + exception | no | |
@@ -158,6 +162,16 @@ The phase brief warns against expanding one enum indefinitely. D2 adds three sta
 **The rule going forward:** a new order state is justified only when the *customer's own understanding of their order* changes. Internal progress of a subordinate process gets its own aggregate and projects into the order's state at most coarsely.
 
 **`RESOLUTION_REVIEW` is the marginal case and is flagged as such.** If a second review-related state is ever proposed, that is the signal the concept has outgrown the order enum and should move to `ProductRequest`/`ResolutionReview` with the order simply remaining `QUOTING` until resolved.
+
+### 4a. Unbounded cycles
+
+Three cycles have no iteration limit and no code enforcing one:
+
+- `PROCUREMENT_PENDING ↔ PRICE_CHANGED` — a seller repeatedly raising price could loop indefinitely
+- `PROCUREMENT_PENDING ↔ PROCUREMENT_FAILED` — retry with no cap
+- `SHIPMENT_EXCEPTION ↔` four transit states
+
+None is currently dangerous (retries are operator-driven), but each becomes a runaway path once automated retry exists. **A retry/attempt counter with a terminal escalation belongs on each**, and is Phase 12 work rather than a table change.
 
 ## 6. Findings that are decisions for the product owner, not architecture
 

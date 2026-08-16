@@ -110,7 +110,11 @@ Two operators acting on one queue item is the expected case, not an edge case.
 | Retry/status tracking | missing (dedupe exists; retry does not) |
 | Read API | missing |
 
-**Design only the missing parts.** The dedupe-by-event-id behaviour is exactly right and must be preserved — it is what makes "one state change sends exactly one message" true under redelivery. **Do not rewrite this subsystem**; the earlier claim that it did not exist was wrong, and rebuilding would discard working idempotency.
+**Design only the missing parts** — the earlier claim that the subsystem did not exist was wrong, and rebuilding would discard working structure.
+
+**But one correction, and it inverts an earlier endorsement.** A previous version of this section called the dedupe "exactly right… do not rewrite." It is not right. `once()` calls `markProcessed` **before** invoking the handler (`apps/worker/src/main.ts:95-99`), and `markProcessed` inserts-and-commits independently (`packages/db/src/repositories.ts:798-806`). **A handler that throws leaves the event marked processed, permanently suppressing redelivery.** That is **at-most-once**, while the module docstring (`:35`) and `§9a` both claim at-least-once.
+
+**Fix:** mark processed in the *same transaction* as the handler's effect, or mark only on success. This is a genuine correctness defect in the event backbone, discovered while documenting it, and it affects every consumer — not just notifications.
 
 **Ordering:** emission and a capture adapter first (Phase 9's sandbox inbox gives the port its first implementation), then persistence, then preferences and retry.
 
@@ -153,6 +157,14 @@ Phase 6 established the operational workspace; Phase 8 established that selectio
 
 **Constraint:** a composed response serves **one workspace's purpose**. Combining unrelated bounded contexts because a screen happens to show them is how a read model becomes a parallel source of truth.
 
+## 6a. The permission vocabulary does not exist yet
+
+**A dependency this phase must state plainly rather than presuppose.** Phase 7 designed ~40 permissions (`resolution:complete`, `ledger:read`, `refund:issue`, `sandbox:use`, …). **None exist in code.** Enforcement is role-string equality (`apps/api/src/common/http.ts:251-256`) against an enum of exactly three values — `ops | finance | admin` (`packages/contracts/src/schemas.ts:90`).
+
+Every permission named in this document, in `api-design-standards.md`, and in the Phase 7 matrix is therefore **a design target, not a current capability**. The specifications above are written against the target model deliberately — but nothing in Phase 10 or 12 can enforce a permission until the model is built, and **the role→permission migration is itself a work package** (Phase 7 §7's five-step plan) that gates every "Permission:" row in this phase.
+
+**One inconsistency corrected:** an earlier draft proposed `sandbox:control:*` while also forbidding wildcards. Wildcards are forbidden; the sandbox control permissions enumerate explicitly (`sandbox:session:create`, `sandbox:clock:advance`, `sandbox:scenario:select`, `sandbox:session:reset`, `sandbox:session:delete`).
+
 ## 7. Authorization enforcement layering
 
 Phase 7 defined the model; Phase 10 places the enforcement.
@@ -191,7 +203,7 @@ The one candidate with a plausible MVP case is bulk exception resolve. Its speci
 | Exception assign | `schema.ts:434` | column without command | application + API | §2 |
 | Exception resolve | `admin.module.ts:305` | service without route | API | §2 |
 | Ranking uncalled | `repositories.ts:656` | no ranking policy | application | §2 (deferred) |
-| Finance blocked | `admin.module.ts:530,536` + `http.ts:253` | role coarseness | authorization | Phase 7 + §7 |
+| Finance blocked **from order context** | `admin.module.ts:436` (class `@Roles('ops','admin')`) | role coarseness | authorization | Phase 7 + §7. **Precision correction:** finance *is* permitted at `/finance/ledger` and `/finance/balances` — `getAllAndOverride` prefers the handler decorator. What finance cannot reach is **order and customer endpoints**, which carry only the class-level roles |
 | Sandbox fails open | `env.ts:63-67` | flag never a gate | config | SB §7 |
 | Unauth settlement | `sandbox.module.ts:188`, `commerce.module.ts:542` | missing `@Public()`; shortcut built around it | controller | SB §4 |
 | Client sandbox tag | `commerce.module.ts:491-500` | trust boundary as transport detail | request context | SB §1 |
@@ -228,13 +240,20 @@ The one candidate with a plausible MVP case is bulk exception resolve. Its speci
 | `exception.resolved` | **none** (`resolveException` unreachable) | **none** | dead |
 | `fx.updated` | FX refresh | **none** | producer without consumer |
 
-**Rule applied:** do not invent events to appear event-driven. `product.resolved` having no consumer is *fine* — it is an audit and future-extension seam. **`notification.requested` and the reconciliation events are different**: they have consumers waiting for messages nobody sends, which is a wiring gap, not a design choice.
+**CORRECTIONS to the table above**, found in review — three rows were wrong and two events were omitted:
+
+- **`product.resolved` / `product.resolution_failed` have no producer.** `packages/core/src/events.ts:32-33` are their only references repo-wide. The table wrongly named "resolution" as producer.
+- **`fx.updated` has no producer** (`events.ts:60`, sole reference) — likewise wrongly attributed.
+- **`order.created` (`commerce.module.ts:283`) and `order.state_changed` (`admin.module.ts:258,295`) were omitted.** `order.state_changed` is the operator-transition event and **has no consumer** — notable because it is the natural trigger for customer notifications.
+- **The notification consumer is not starved.** `topology.ts:44` binds its queue to `order.*`/`payment.*`/`exception.*`, so it **already receives real events and discards them**. The missing piece is an adapter, not the messages.
+
+**Rule applied:** do not invent events to appear event-driven. An event with no consumer is a legitimate audit seam. **An event constant with no producer is not** — it is a stub that reads as wiring.
 
 **Worker boundaries.** Workers execute asynchronous application responsibilities; they must not become a second API layer. Verified compliant — consumers call application services rather than writing the database directly. **Requirement carried forward:** every command must record its origin (authenticated user / provider callback / scheduled job / event consumer / sandbox control), because the audit trail cannot otherwise distinguish an automated transition from an operator's. This is Phase 7's `system` principal, and it is not yet implemented.
 
 ## 9b. Persistence boundaries
 
-**No repository or database model is exposed through an API.** Verified as currently true: responses are mapped through DTOs derived from `@xb/contracts` schemas.
+**Mostly true, with one verified exception.** Responses are generally mapped through DTOs derived from `@xb/contracts` schemas — **but `FinanceService.ledger()` (`admin.module.ts:394-415`) hand-emits `seq` and `txnId`**, which are ledger sequence internals, with no contracts DTO. That is persistence exposure and it should be mapped like everything else before the finance read model (§6) is built on top of it.
 
 Schema changes proposed by this phase, each with its context and impact:
 
