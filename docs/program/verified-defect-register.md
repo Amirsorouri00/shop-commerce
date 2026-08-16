@@ -61,9 +61,9 @@ So today an authenticated customer can set `x-sandbox-session` to any string on 
 ---
 
 ### P0-SEC-004 — sandbox money contaminates production balances
-**Status:** missing · **Evidence:** `packages/db/src/schema.ts` (22 `pgTable` declarations; `sandboxSessionId` at `:238` only), `apps/api/src/modules/admin.module.ts:392-433`
+**Status:** missing · **Evidence:** `packages/db/src/schema.ts` (21 `pgTable` declarations; `sandboxSessionId` at `:238` only), `apps/api/src/modules/admin.module.ts:392-433`
 
-**1 of 22 tables carries a sandbox tag.** `ledgerEntries` has none. `FinanceService.balances()` sums four accounts across **all** entries with no filter — and cannot filter, because the column does not exist. `FinanceService.ledger()` likewise returns sandbox and production rows indistinguishably.
+**1 of 21 tables carries a sandbox tag.** `ledgerEntries` has none. `FinanceService.balances()` sums four accounts across **all** entries with no filter — and cannot filter, because the column does not exist. `FinanceService.ledger()` likewise returns sandbox and production rows indistinguishably.
 
 **Root cause:** isolation designed at one aggregate, never propagated. **Layer:** persistence.
 

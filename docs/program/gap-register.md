@@ -22,7 +22,7 @@
 | **G-03** | Unauthenticated settlement in production — sandbox settle route not env-gated | security + financial | API | G-01 | `sandbox.module.ts:188-197` |
 | **G-04** | Verified webhook unreachable — no `@Public()` despite docstring; default-deny blocks gateways | security | API | — | `commerce.module.ts:536-549` |
 | **G-05** | Client-controlled sandbox tag → **live concealment channel** (exclusion already defaults on) | security | request context | — | `commerce.module.ts:493-499`, `repositories.ts:249`, `schemas.ts:323` |
-| **G-06** | Sandbox money moves production balances — 1 of 22 tables tagged; `balance()` unfiltered | financial | persistence | G-05 | `schema.ts:238`, `repositories.ts:600-610` |
+| **G-06** | Sandbox money moves production balances — 1 of 21 tables tagged; `balance()` unfiltered | financial | persistence | G-05 | `schema.ts:238`, `repositories.ts:600-610` |
 | **G-07** | Two pre-payment refund paths; refund lifecycle entirely unbuilt | domain lifecycle | Order | — | `order-state-machine.ts:17,18,33,34` |
 | **G-08** | 3 edges cancel a **paid** order with no refund | financial | Order | G-07 | `:33,34,37` |
 | **G-09** | Failed/abandoned resolution has no exit — `QUOTING` wedge | domain lifecycle | Order | — | `:17` |
@@ -40,9 +40,9 @@
 | **G-16** | Support capability absent entirely | missing app boundary | Support | G-13 | no table/route/service |
 | **G-17** | Exception assign / resolve / rank orphaned | missing app boundary | Exception | G-13 | `schema.ts:434`, `admin.module.ts:305`, `repositories.ts:656` |
 | **G-18** | Finance cannot reach order/customer context from a ledger entry | authorization | auth | G-13 | class-level `@Roles` `admin.module.ts:436` |
-| **G-19** | **`STATE_TO_STEP_INDEX` covers 12/24 — timeline shows nothing done for 12 states** | UI | presentation | — | `:148`, `:170` — **new in Phase 11** |
+
 | **G-20** | `STATE_BADGES` 21/24 → raw enum text to Persian customers | UI | presentation | — | `order-display.ts`, `track/page.tsx:95` |
-| **G-21** | Admin has zero sandbox propagation → operator E2E unexecutable | sandbox | admin client | G-05 | grep: 0 refs |
+| **G-21** | Admin **cannot enter** a sandbox session — `lib/api.ts` never sends `X-Sandbox-Session`. A "Demo orders" filter exists (`orders/page.tsx:71-125`), which is why the earlier "zero references" framing was wrong | sandbox | admin client | G-05 | `apps/admin/lib/api.ts` (0 header refs) |
 | **G-22** | `sms`/`storage` unrouted — sandbox can send a real SMS | sandbox | composition | — | `adapters.ts:65-74` |
 | **G-23** | `verifyWebhook` unroutable; callback verification untestable | sandbox + security | composition | G-04 | `sandbox-routing.ts:26` |
 | **G-24** | Reconciliation matcher absent — consumer logs only | financial | Reconciliation | G-06 | `worker/main.ts:233-237` |
@@ -50,15 +50,27 @@
 | **G-26** | Address update/delete absent | API | Account | — | `apps/web/lib/api.ts` |
 | **G-27** | No cancellation command despite 7 legal edges | missing app boundary | Order | G-07 | grep: no producer |
 
+## P1 — added by the Phase 6 audit (Gate 1)
+
+| ID | Gap | Type | Owning context | Depends on | Evidence |
+|---|---|---|---|---|---|
+| **G-46** | **Order search returns duplicate rows.** Row query `leftJoin`s unresolved exceptions so an order with N exceptions yields N rows, while `total` uses `count(DISTINCT orders.id)`. Rows and count disagree; offset paging shifts | API + persistence | Order | — | `repositories.ts:284,290` |
+| **G-47** | **Exception queue cursor is inconsistent with its sort.** Cursor is `lt(id)`; sort is `desc(rank), desc(id)`. Correct **only because ranks are uniform** — so **fixing G-17 (ranking) without this corrupts pagination**. Admin client also never sends a cursor, capping the queue at 20 with no "more" | API + persistence | Exception | **gates G-17** | `repositories.ts:635,641`; `admin/lib/api.ts:120-124` |
+| **G-48** | **Ledger has no pagination and hides it.** Capped at 200 with a hardcoded `nextCursor: null` implying paging exists. Silent truncation on a reconciliation-grade surface | financial + API | Finance | — | `admin.module.ts:392-415` |
+| **G-49** | **Admin money commands ignore the idempotency key they are sent.** No admin route carries `@Idempotent()`; the admin client sends `Idempotency-Key` on procurement confirm, which posts double-entry ledger lines. Only `assertTransition` accidentally blocks a replay | financial | Procurement | — | `admin.module.ts:216-225`; `admin/lib/api.ts:149` |
+| **G-50** | **`resolveException` has no actor parameter** — writes only `resolvedAt`/`resolutionNote`, so shipping it as-is produces an unattributed resolution, violating the program's own audit rule | authorization + observability | Exception | G-17 | `admin.module.ts:305`; `repositories.ts:649` |
+| **G-51** | **Backoffice capability matrix omits four required capabilities** — MASTER-PROMPT `:609-625` requires sorting, saved filters/views, exports, and history; none appear in the Phase 6 matrix. Exports are load-bearing for finance hand-off, saved views for repeated triage | UI + API | backoffice | G-13 | `MASTER-PROMPT.md:609-625` |
+
 ## P2
 
 | ID | Gap | Type | Evidence |
 |---|---|---|---|
-| **G-28** | 12 of 24 event constants dead | observability | enumeration §5 |
+| **G-19** | `STATE_TO_STEP_INDEX` covers 12/24; the 12 unmapped states fall to `-1` so all 8 timeline steps render PENDING **while still carrying real timestamps**. Misleads; does not block completion — **P2, domain layer** (corrected from P1/presentation) | UI | `order-state-machine.ts:148,170,189-197` |
+| **G-28** | **18** of 24 event constants dead; `EVENT_TYPES` referenced nowhere functionally — all emission uses raw strings, so a typo'd topic is not type-checked | observability | `events.ts:28-62`; 7 emit sites |
 | **G-29** | 4 events have producers, no consumers (incl. `order.state_changed`) | observability | §5 |
 | **G-30** | `detectStalls` logs without raising | observability | `worker/main.ts:380-386` |
 | **G-31** | Ledger DTO hand-emits `seq`/`txnId` — persistence exposure | API | `admin.module.ts:394-415` |
-| **G-32** | Provider health has API, no screen | UI | `GET /v1/admin/providers` |
+| ~~G-32~~ | ~~Provider health has API, no screen~~ — **WITHDRAWN, claim was false.** Provider health *is* rendered on the queue home as a degraded-count tile and warning banner (`apps/admin/app/page.tsx:29,53,76-85`). What is genuinely missing is a detail view and control actions — retained as **G-32a (P2)** | UI | verified |
 | **G-33** | Money field naming (`amount` vs `amountMinor`) permits 10× misread | financial | Phase 10 API §3 |
 | **G-34** | `QuoteBreakdown` mixes rial and toman in one panel | UI | `QuoteBreakdown.tsx:49-50` |
 | **G-35** | Catalogue vs chargeable weight conflated; api-tier weight never escalates | domain | `strategies.ts:83-85` |
@@ -66,7 +78,11 @@
 | **G-37** | Three unbounded retry cycles | domain | traceability §4 |
 | **G-38** | Session TTL slides; no CAS on session writes | sandbox | `sandbox-routing.ts:70-74` |
 | **G-39** | `availableActions` has no producer, consumer, or test | API | design-target only |
-| **G-40** | Admin `transition`/`reprice` post ledger entries without idempotency keys | financial | `admin.module.ts:494-527` |
+| ~~G-40~~ | ~~Admin `transition`/`reprice` post ledger entries without idempotency keys~~ — **WITHDRAWN, fabricated.** Verified: `OpsService.transition` (`:235-266`) and `reprice` (`:268-300`) post **no** ledger entries. The genuine unkeyed ledger posts are `confirmProcurement` (`admin.module.ts:210`) and `settlePayment` (`commerce.module.ts:366`) — retained as **G-49** | financial | verified |
+
+## Later (Line B/C)
+
+`G-52` eight repository methods have no external caller (`findByOrder`, `findByPhone`, `listByOrder`, `listByRef`, `listEvents`, `purgeExpired`, `purgeOlderThan`, `updateRanks`) — enumerated, not sampled. Two of them (`listByRef`, `listEvents`) are the payments-by-order and shipment-timeline reads the IA lists as MISSING.
 
 ## Later (Line B/C)
 

@@ -173,7 +173,7 @@ Phase 8's invariant: canonical IRR is **rial** in API, domain, and storage; cust
 2. **Fail-closed routing** on unknown/expired session *(closes F-S1)* — the highest-severity item after config, because it can reach real providers.
 3. **Route `verifyWebhook`** *(closes F-S2)*.
 4. Sandbox permissions and control-plane authorization.
-5. **Propagate the sandbox tag beyond `orders` (1 of 22 tables today) and make repository-layer exclusion the default** *(closes F-S3 — sandbox ledger entries currently move production balances)*.
+5. **Propagate the sandbox tag beyond `orders` (1 of 21 tables today) and make repository-layer exclusion the default** *(closes F-S3 — sandbox ledger entries currently move production balances)*.
 6. Session-namespaced cache keys.
 7. Notification capture adapter + inbox surface.
 8. Injected business clock replacing any `Date.now()` in domain paths.
@@ -188,7 +188,7 @@ Phase 8's invariant: canonical IRR is **rial** in API, domain, and storage; cust
 
 ### Review A — self completeness
 
-Checked every phase criterion. Found and fixed one omission mid-pass: **F-S3**, discovered by auditing tag propagation rather than asserting it — only 1 of 22 tables carries a sandbox tag, so sandbox ledger entries move production balances. Also verified one requirement was *already satisfied* (`createSandboxAdapters` takes no credentials, so sandbox adapters are structurally incapable of holding production secrets).
+Checked every phase criterion. Found and fixed one omission mid-pass: **F-S3**, discovered by auditing tag propagation rather than asserting it — only 1 of 21 tables carries a sandbox tag, so sandbox ledger entries move production balances. Also verified one requirement was *already satisfied* (`createSandboxAdapters` takes no credentials, so sandbox adapters are structurally incapable of holding production secrets).
 
 **Consistent with Phases 5–8: self-review found omissions, not contradictions.**
 

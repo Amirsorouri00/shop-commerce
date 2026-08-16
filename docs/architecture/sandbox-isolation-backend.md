@@ -35,7 +35,7 @@
 
 ## 3. Financial isolation
 
-**Verified problem:** 1 of 22 tables carries a sandbox tag. `ledgerEntries` has none; `FinanceService.balances()` sums all entries unfiltered and cannot filter.
+**Verified problem:** 1 of 21 tables carries a sandbox tag. `ledgerEntries` has none; `FinanceService.balances()` sums all entries unfiltered and cannot filter.
 
 **Design, in the mandatory order:**
 

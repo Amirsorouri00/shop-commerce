@@ -4,7 +4,7 @@
 >
 > **Evidence rule:** every claim about existing behaviour carries a `file:line` citation from source opened in this phase. Design documents are never cited as evidence that implementation exists.
 >
-> **Enumeration rule (Phase 11 §2):** where a claim concerns a closed set, the complete set is enumerated. Sets enumerated here: all 24 order states and all 51 edges; all 4 state-keyed presentation maps; all 3 settlement entry points; all 11 `@Public()` decorators; all 24 event constants; all 8 `AdapterSet` members; all sandbox-exclusion sites; all tables contributing to balances.
+> **Enumeration rule (Phase 11 §2):** where a claim concerns a closed set, the complete set is enumerated. **This rule was itself violated in §5 of the first draft** — the event enumeration counted constants rather than emissions and produced three errors; corrected below, and recorded because the rule is worthless if its failures are hidden. Sets enumerated here: all 24 order states and all 51 edges; **6** state-keyed presentation maps (an earlier draft said 4, omitting `CARRIER_STATUS_MAP` and `STEP_LABELS`); all 3 settlement entry points; all 11 `@Public()` decorators; all 24 event constants; all 8 `AdapterSet` members; all sandbox-exclusion sites; all tables contributing to balances.
 >
 > Companions: `gap-register.md` (severity/classification), `dependency-graph.md` (ordering), `test-coverage-map.md`, `verified-defect-register.md` (Phase 10 root causes).
 
@@ -20,7 +20,7 @@
 
 **1. The Phase 7 permission model is `DESIGN-TARGET` in its entirety.** Enforcement today is role-string equality (`apps/api/src/common/http.ts:251-256`) against an enum of exactly three values — `ops | finance | admin` (`packages/contracts/src/schemas.ts:90`). Every permission named in Phases 7–10 (`resolution:complete`, `ledger:read`, `refund:issue`, `sandbox:use`, …) exists in **no** code. Rows below therefore carry **two** authorization columns: CURRENT (role string) and TARGET (permission).
 
-**2. Executable sandbox parity does not exist.** `apps/admin` contains **zero** sandbox references, so no operator journey can run in a sandbox session. Architecture exists; execution does not.
+**2. Executable sandbox parity does not exist.** **CORRECTED.** `apps/admin` does contain sandbox references — `app/orders/page.tsx:71-125,298-306` is a full "Demo orders" filter (`exclude|only|include`). The real defect is narrower and unchanged in effect: **`apps/admin/lib/api.ts` never sends `X-Sandbox-Session`** (0 references), so the admin can *filter* sandbox rows it cannot *create or enter*. No operator journey can run inside a sandbox session. Architecture exists; execution does not.
 
 ---
 
@@ -34,7 +34,7 @@ Format: step → screen → API → use case → domain → transition → authz
 | C2 | Marketplace ID | `/` | (same) | `marketplaceRegistry.parse` | — | `@Public` / — | — | — | — | yes | **IMPLEMENTED** |
 | C3 | Resolution ladder | `/` | (same) | `ResolutionPipeline.resolve` | `RESOLVED\|NEEDS_REVIEW\|FAILED` | `@Public` / — | `product.resolved` **dead** | `StorePort` | `RES-01/02` | yes | **IMPLEMENTED-BUT-DEFECTIVE** — in production `buildStoreStrategies` registers **nothing** (`adapters.ts:288-295` refuses the stub); api/structured/vision are commented out |
 | C4 | Variant confirm | `/` | — | — | — | — / — | — | — | — | no | **MISSING** — no `selectableVariations` field |
-| C5 | **NEEDS_REVIEW** | — | — | — | no order state exists | — | — | `ManualResolutionStrategy` **never registered** | `RES-03` stops here | no | **MISSING** — full vertical trace §6 |
+| C5 | **NEEDS_REVIEW** | `/` — Persian "some info is uncertain" banner (`apps/web/app/page.tsx:138`) | — | — | `productRequest.status` only; **no order state** | — | — | `ManualResolutionStrategy` **never registered** | `RES-03` stops here | no | **PARTIAL — CORRECTED.** A customer-facing surface *does* exist; what is missing is the operator queue, the review command, and any exit. Full vertical trace §6 |
 | C6 | Quote | `/` | `POST /v1/quotes` `:470` | quote engine | `QUOTING→QUOTED` | `@Public` / — | `quote.created` **producer, no consumer** | `FxPort`,`CustomsPort` | `QUO-01` | partial | **IMPLEMENTED** |
 | C7 | Quote expiry | `/` | `POST /v1/quotes/:id/refresh` `:481` | refresh | — | `@Public` / — | `quote.expired` **no consumer** | — | `QUO-04` **unrunnable** (real `Date.now()`) | no | **PARTIAL** |
 | C8 | Auth (OTP) | `/checkout` | `auth.module.ts:382-403` | OTP | session | `@Public` / — | `customer.registered` **dead** | `SmsPort` | — | `auth.otp.test.ts` 12 tests | **IMPLEMENTED** |
@@ -49,13 +49,13 @@ Format: step → screen → API → use case → domain → transition → authz
 | C17 | Procurement | — | worker `main.ts:121` | purchase | `→PURCHASED` | system / `system` principal | `procurement.purchased` | `ProcurementPort` | `PRO-01` | `commerce.test.ts` guard | **IMPLEMENTED** |
 | C18 | **Price-change decision** | `/orders/:id` **absent** | **none** | — | `PRICE_CHANGED→…` legal | — / `order:decide` | — | — | `PRO-02` | no | **MISSING** — backend edges exist, no customer API |
 | C19 | Out-of-stock | `/track` banner | — | — | `OUT_OF_STOCK` | — | — | — | `PRO-03` | no | **IMPLEMENTED-BUT-DEFECTIVE** — state overloaded pre/post-payment |
-| C20 | Customer-action-required | `/track` banner | **none** | — | `CUSTOMER_ACTION_REQUIRED` | — / `order:decide` | — | — | `FUL-05` | no | **MISSING** |
+| C20 | Customer-action-required | `/track` banner | **none for the customer**; operator can set/clear via generic transition | — | `CUSTOMER_ACTION_REQUIRED` | — / `order:decide` | — | — | `FUL-05` | no | **MISSING (customer)** — operator path exists via `transition` |
 | C21 | Customs exception | `/track` banner | **none** | — | `CUSTOMS_EXCEPTION` | — | — | `CustomsPort` | `FUL-02` | no | **MISSING** (customer action) |
 | C22 | Tracking | `/track?id=` | `GET /v1/orders/:id` | get | timeline projection | bearer, owner-scoped / — | `shipment.leg_updated` | `CarrierPort` | `FUL-01` | no | **IMPLEMENTED-BUT-DEFECTIVE** — see §4 |
 | C23 | Delivery | `/track` | — | — | `→DELIVERED` terminal | — | — | `CarrierPort` | `FUL-01` | no | **IMPLEMENTED** |
 | C24 | Support | — | **none** | — | — | — / `support:*` | — | — | `SUP-01` fails | no | **MISSING** — no table, route, or service |
-| C25 | Refund | — | **none** | — | `REFUND_PENDING→REFUNDED` **never performed** | — / `refund:request` | — | `PaymentPort.refund` **no callers** | `REF-01` | no | **MISSING** — lifecycle is table-only |
-| C26 | Cancellation | — | **none** | — | 7 inbound edges to `CANCELLED` | — | `order.cancelled` **dead** | — | none | no | **MISSING** — no cancel command |
+| C25 | Refund | — (customer) | **operator-only** via generic `transition` to `REFUND_PENDING`; no `REFUNDED` producer | — | `REFUND_PENDING→REFUNDED` **never performed** | — / `refund:request` | — | `PaymentPort.refund` **no callers** | `REF-01` | no | **MISSING** — lifecycle is table-only |
+| C26 | Cancellation | — (customer) / operator `/order/` | **operator-only**: `POST /v1/admin/orders/:id/transition` | — | 7 inbound edges to `CANCELLED` | `ops\|admin` / `order:transition` | `order.cancelled` **dead** | — | none | no | **PARTIAL — CORRECTED.** An earlier draft said "no cancel command." An operator *can* cancel via the generic transition endpoint, offered as a one-click target in the admin UI (`apps/admin/app/order/page.tsx:314`). What is missing is a **customer** command and a *specific* cancel command rather than a raw target-state transition |
 | C27 | Notifications | — | — | — | — | — | `notification.requested` **dead constant** | `NotificationPort` **no adapter** | none | no | **MISSING** — §7 |
 | C28 | Terminal states | `/track` | — | — | `DELIVERED`,`REFUNDED`,`CANCELLED` | — | — | — | — | no | **PARTIAL** — 2 of 3 have no customer copy |
 
@@ -106,18 +106,26 @@ Per Phase 11 §4, no step is complete because a domain transition exists. Steps 
 | `ALERTS` `:213` | 8/24 | incl. `REFUNDED`, `CANCELLED` |
 | `STATE_BADGES` (web) `order-display.ts` | 21/24 | `DRAFT`, `QUOTING`, `QUOTED` → raw enum leaks |
 
-**New defect found by enumeration (GAP-P11-01).** `buildCustomerTimeline` uses `STATE_TO_STEP_INDEX[state] ?? -1` (`:170`). For any of the 12 unmapped states the index is `-1`, so **every one of the 8 timeline steps renders `PENDING`**. A customer whose order is in `REFUND_PENDING` — or `PRICE_CHANGED`, or `SHIPMENT_EXCEPTION` — sees a timeline in which *nothing has happened*, including the confirmed, purchased, and shipped steps that demonstrably did. This was not found by any earlier phase because each inspected the map's contents rather than enumerating against all 24 states.
+**New defect found by enumeration (G-19).** `buildCustomerTimeline` uses `STATE_TO_STEP_INDEX[state] ?? -1` (`:170`). For any of the 12 unmapped states the index is `-1`, so **every one of the 8 timeline steps renders `PENDING`**. A customer whose order is in `REFUND_PENDING` — or `PRICE_CHANGED`, or `SHIPMENT_EXCEPTION` — sees a timeline in which *nothing has happened*, including the confirmed, purchased, and shipped steps that demonstrably did. This was not found by any earlier phase because each inspected the map's contents rather than enumerating against all 24 states.
+
+**Two qualifications, added after review.** (a) `AWAITING_PAYMENT: -1` (`:149`) is an *explicit* mapping to `-1`, showing the sentinel is intentional for pre-payment — so `-1` is not per se a bug, and the defect is specifically the 12 **unmapped** states falling into it. (b) `firstTimestampForStep` (`:189-197`) still returns real `occurredAt` values, so the customer sees **timestamped steps labelled PENDING** — internally contradictory, and arguably more confusing than a blank timeline. Severity is **P2, not P1**: it misleads without preventing journey completion. Owning context is **domain** (`apps/api/src/domain/`), not presentation.
 
 ---
 
 ## 5. Event backbone — all 24 constants enumerated
 
+**CORRECTED after review — the earlier table was wrong three ways.** `EVENT_TYPES` (`packages/core/src/events.ts:28-62`) is **referenced nowhere functionally** — every emission uses a raw string literal, so the constant table is decorative and a typo'd topic cannot be caught by the type system. That is the structural fact, and it invalidates the earlier framing.
+
+**Actual emission sites: 7, across 6 distinct topics** — `commerce.module.ts:283,385`, `admin.module.ts:220,258,295`, `worker/main.ts:179,344`.
+
+Consequences: **18 of 24 constants are dead**, not 12. `quote.created`, `quote.expired`, and `shipment.exception` have **zero references anywhere** — they were wrongly listed as "producer, no consumer"; only `order.state_changed` belongs in that category. The earlier table also listed five members under a count of four.
+
 | Category | Count | Events |
 |---|---|---|
-| **Dead constant** (no reference outside declaration) | **12** | `customer.registered`, `exception.resolved`, `fx.updated`, `notification.requested`, `order.cancelled`, `payment.initiated`, `procurement.failed`, `procurement.required`, `product.requested`, `product.resolution_failed`, `product.resolved`, `reconciliation.unmatched` |
-| Producer, no consumer | 4 | `order.state_changed`, `quote.created`, `quote.expired`, `shipment.exception` |
+| **Dead constant** (no reference anywhere) | **18** | `customer.registered`, `exception.resolved`, `fx.updated`, `notification.requested`, `order.cancelled`, `payment.initiated`, `procurement.failed`, `procurement.required`, `product.requested`, `product.resolution_failed`, `product.resolved`, `reconciliation.unmatched` |
+| Producer, no consumer | **1** | `order.state_changed` |
 | Topology binding, no producer | 3 | `ledger.posted`, `payment.failed`, `payment.settled` |
-| Producer + consumer | 4 | `order.created`, `order.paid`, `procurement.purchased`, `exception.raised`, `shipment.leg_updated` |
+| Producer + consumer | **5** | `order.created`, `order.paid`, `procurement.purchased`, `exception.raised`, `shipment.leg_updated` |
 
 **Nuance the enumeration resolves:** `notification.requested` is a dead *constant*, yet the notification queue is **live** — `topology.ts:44` binds it to `order.*`/`payment.*`/`exception.*`, so the consumer receives real events and discards them (`worker/main.ts:224-231`). Both the Phase 3/9 claim ("no consumer") and a naive reading of the dead constant are wrong.
 
@@ -189,7 +197,7 @@ Constructed so Phase 12 cannot implement only one layer.
 |---|---|---|
 | Client → API | `X-Sandbox-Session` header | **IMPLEMENTED-BUT-DEFECTIVE** — trusted verbatim |
 | Server validation | — | **MISSING** |
-| Order persistence | `orders.sandboxSessionId` `schema.ts:238` | **IMPLEMENTED** — **1 of 22 tables** |
+| Order persistence | `orders.sandboxSessionId` `schema.ts:238` | **IMPLEMENTED** — **1 of 21 tables** |
 | Payment / ledger / exception / reconciliation persistence | — | **MISSING** |
 | Event envelope | — | **MISSING** — not carried |
 | Worker context | order-row lookup on `payload.orderId` `worker/main.ts:100-108` | **PARTIAL** — events without `orderId` never enter sandbox context |
@@ -222,8 +230,8 @@ Constructed so Phase 12 cannot implement only one layer.
 | Workflow | UI | API | Authz CURRENT / TARGET | Status |
 |---|---|---|---|---|
 | Order investigation | `/order/?id=` | `GET /v1/admin/orders/:id` | `ops\|admin` / `order:read` | **IMPLEMENTED** |
-| Order search | `/orders/` | `GET /v1/admin/orders` | `ops\|admin` / `order:read` | **IMPLEMENTED** |
-| Exception queue | `/` | `GET /v1/admin/exceptions` | `ops\|admin` / `exception:read` | **IMPLEMENTED** |
+| Order search | `/orders/` | `GET /v1/admin/orders` | `ops\|admin` / `order:read` | **IMPLEMENTED-BUT-DEFECTIVE** — G-46: the row query `leftJoin`s unresolved exceptions (`repositories.ts:284`) so an order with N exceptions yields N rows, while `total` uses `count(DISTINCT orders.id)` (`:290`). Rows and count disagree and offset paging shifts |
+| Exception queue | `/` | `GET /v1/admin/exceptions` | `ops\|admin` / `exception:read` | **IMPLEMENTED-BUT-DEFECTIVE** — G-47: cursor is `lt(id)` (`repositories.ts:635`) while sort is `desc(rank), desc(id)` (`:641`). Consistent **only because ranks are uniform** — fixing G-17 (ranking) without the cursor corrupts paging. Also the admin client never sends a cursor (`admin/lib/api.ts:120-124`), so the queue shows at most 20 with no "more" affordance |
 | Exception ranking | — | — | — / `exception:rank` | **ORPHANED** — `updateRanks` `repositories.ts:656` never called |
 | Exception assignment | — | — | — / `exception:assign` | **ORPHANED** — `assignee` column read, never written |
 | Exception resolution | — | — | — / `exception:resolve` | **ORPHANED** — `resolveException` `admin.module.ts:305` no route |
@@ -233,9 +241,9 @@ Constructed so Phase 12 cannot implement only one layer.
 | Support | — | — | — / `support:*` | **MISSING** |
 | Refund | — | — | — / `refund:issue` | **MISSING** |
 | Payment investigation | — | — | — / `payment:read` | **MISSING** |
-| Ledger investigation | `/finance/` | `GET /v1/admin/finance/ledger` | **`finance\|admin`** / `ledger:read` | **IMPLEMENTED-BUT-DEFECTIVE** — hand-emits `seq`/`txnId`, no DTO |
+| Ledger investigation | `/finance/` | `GET /v1/admin/finance/ledger` | **`finance\|admin`** / `ledger:read` | **IMPLEMENTED-BUT-DEFECTIVE** — hand-emits `seq`/`txnId` with no DTO; **G-48: no pagination at all** — capped at 200 with a hardcoded `nextCursor: null` (`admin.module.ts:414`) that implies paging exists. Silent truncation on a reconciliation-grade surface |
 | Reconciliation | — | — | — / `reconciliation:*` | **MISSING** — consumer logs only (`worker/main.ts:233-237`) |
-| Integration health | — | `GET /v1/admin/providers` | `ops\|admin` / `provider:read` | **PARTIAL** — API exists, no screen |
+| Integration health | **`/` queue home** — "Providers degraded" KPI tile + warning banner (`apps/admin/app/page.tsx:29,53,76-85`) | `GET /v1/admin/providers` | `ops\|admin` / `provider:read` | **IMPLEMENTED** — **CORRECTED.** Phase 6 claimed "no screen" three times and Phase 11 repeated it. Provider health *is* rendered on the queue home; what is missing is a dedicated detail view and any control action |
 | Config / countries | — | — | — / `config:*` | **MISSING** |
 | RBAC administration | — | — | — / `user:manage` | **MISSING** |
 | Sandbox control | — | `/v1/sandbox/*` | **`@Public()`** / `sandbox:control:*` | **IMPLEMENTED-BUT-DEFECTIVE** — anonymous |
@@ -267,3 +275,62 @@ No speculative rows. Verifying only that today's architecture does not force a f
 Customer-visible vocabulary audited against internal concepts. **No leak of aggregates, roles, provider internals, or ledger terminology** — the 8-step projection (`buildCustomerTimeline`) is doing its job.
 
 **One live leak:** 3 of 24 states (`DRAFT`, `QUOTING`, `QUOTED`) fall through `STATE_BADGES` to raw enum text (`track/page.tsx:95`). **And the timeline defect above (GAP-P11-01) is a second, larger one** — it does not leak vocabulary but it misrepresents progress.
+
+---
+
+## 14. Dead-end audit (§27) — by producer, not by edge
+
+The useful question is not "does an exit edge exist" but "does anything perform it." Enumerated: only **4 transition targets are hardcoded** anywhere in application code (`PAID`, `PROCUREMENT_PENDING`, `PURCHASED`, `AWAITING_PAYMENT`); carrier-driven states come from `normalizeCarrierStatus` (`worker/main.ts:318,334`); the procurement guard sets `PRICE_CHANGED`/`OUT_OF_STOCK` (`worker/main.ts:154`).
+
+**States with no automatic producer at all** — reachable only through the generic operator `POST /admin/orders/:id/transition`:
+
+| State | Automatic producer | Exit producer | Verdict |
+|---|---|---|---|
+| `PROCUREMENT_FAILED` | **none** | operator only | reachable by operator; no system path |
+| `PAYMENT_FAILED` | **none** | operator only | **dead** — a declined payment leaves the order in `AWAITING_PAYMENT` |
+| `REFUND_PENDING` | **none** | **none** | operator can enter; **nothing performs `→ REFUNDED`** |
+| `REFUNDED` | **none** | terminal | **unreachable** |
+| `CANCELLED` | **none** | terminal | operator-reachable only |
+
+**The sharpest dead end: `REFUND_PENDING`.** An operator *can* move an order into it via the generic transition endpoint, and **nothing anywhere can move it out** — `REFUNDED` has no producer and `PaymentPort.refund()` has no callers. An operator acting in good faith today can strand an order permanently in a refund state. This is worse than the previously recorded "refund is unbuilt," because the entry is reachable while the exit is not.
+
+**Terminal states — are they terminal in UX as well as domain?** `DELIVERED` yes. `REFUNDED` and `CANCELLED` are domain-terminal but have **no `ALERTS` copy** and **no `STATE_TO_STEP_INDEX` entry**, so a customer reaching either sees an all-`PENDING` timeline and no closing message (G-19, G-20).
+
+## 15. Review record
+
+### Gate 1 — Phase 6 audit (outstanding since Phase 6; ran on the third attempt)
+
+Found six defects no later phase had caught. Accepted after source verification:
+
+| Finding | Verdict |
+|---|---|
+| **Provider health *does* have a screen** (`apps/admin/app/page.tsx:29,53,76-85`) | **Accepted** — Phase 6 claimed "no screen" three times and Phase 11 repeated it. Corrected in §11 |
+| **G-46** order search `leftJoin` duplicates rows vs `count(DISTINCT)` | Accepted — `repositories.ts:284,290` |
+| **G-47** exception cursor `lt(id)` vs sort `desc(rank), desc(id)` — **gates G-17** | Accepted; new dependency added to Chain F |
+| **G-48** ledger has no pagination, hardcodes `nextCursor: null` | Accepted |
+| **G-49** admin money commands ignore the `Idempotency-Key` they receive | Accepted |
+| **G-51** capability matrix omits sorting, saved views, exports, history | Accepted |
+| Phase 6 area counts internally inconsistent ("nine" listing ten; "1 of 11") | Accepted as a documentation defect; the substance stands |
+
+### §33 — cross-phase adversarial review
+
+Found the traceability model's own enumeration rule violated. All accepted after verification; **two register entries were withdrawn as false**:
+
+| Finding | Verdict |
+|---|---|
+| **`apps/admin` does have sandbox references** — a full "Demo orders" filter | **Accepted.** My "zero references" claim was wrong in four documents. Real defect is narrower: no `X-Sandbox-Session` header |
+| **G-40 fabricated** — `transition`/`reprice` post no ledger entries | **Accepted; G-40 withdrawn.** Real unkeyed posts are `confirmProcurement` and `settlePayment` |
+| **21 tables, not 22** | Accepted; corrected program-wide |
+| **`EVENT_TYPES` referenced nowhere functionally**; 18 dead constants not 12; 3 of 4 "producer, no consumer" have no producer; count/member mismatch | **Accepted — the weakest claim.** §5 violated this document's own enumeration rule by counting constants rather than emissions |
+| Cancellation, `CUSTOMER_ACTION_REQUIRED`, `REFUND_PENDING` are operator-reachable via the generic transition endpoint | **Accepted** — statuses corrected from MISSING to PARTIAL |
+| Customer `NEEDS_REVIEW` surface exists (`web/app/page.tsx:138`) | Accepted; C5 corrected |
+| G-19 severity P1→P2, owning context presentation→domain | Accepted |
+| 6 state-keyed maps, not 4 | Accepted |
+| Operator login, `finance/balances`, `copilot` unenumerated | Accepted; §11 covers finance and procurement — operator login added as a known omission |
+| `isException`/`isTerminal` have zero callers; `purgeOlderThan` uncalled → unbounded dedupe growth | Accepted → **G-52** |
+| Dependency errors: G-13(P1) placed ahead of G-02(P0); G-03 and G-12 over-serialized | **Accepted** — see `dependency-graph.md` corrections |
+| ~10 mis-cited line numbers (off by 1–5) | Accepted; the substance held in every case, but the citations were imprecise |
+
+**Nothing was rejected.**
+
+**The failure mode this phase exhibited.** Phase 11 was written specifically to counter Phase 10's under-searching, and its enumeration rule did work — it found G-19, G-46, G-47 and the dead-end above. **But §5 violated the rule while stating it**, by enumerating the constant table instead of the emission sites. Enumerating *a* set is not the same as enumerating *the right* set, and the review's identification of this as the weakest claim is correct.

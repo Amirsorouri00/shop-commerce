@@ -64,7 +64,7 @@ The trade being made is *demo smoothness* against *production safety*, and it is
 
 ### F-S3 — sandbox ledger entries pollute production financial balances *(new, P0 — verified, not hypothetical)*
 
-**Only 1 of 22 tables carries a sandbox tag.** `sandboxSessionId` exists on `orders` (`packages/db/src/schema.ts:238`, indexed `:246`) and **nowhere else** — not on `ledgerEntries`, `payments`, `procurements`, `exceptions`, or `reconciliationItems`.
+**Only 1 of 21 tables carries a sandbox tag.** `sandboxSessionId` exists on `orders` (`packages/db/src/schema.ts:238`, indexed `:246`) and **nowhere else** — not on `ledgerEntries`, `payments`, `procurements`, `exceptions`, or `reconciliationItems`.
 
 The consequence is immediate and current:
 
@@ -150,7 +150,7 @@ Applying Phase 7. **Three distinct permission classes**, because conflating them
 |---|---|
 | **Database** | Shared. Isolation by `sandboxSessionId` tagging |
 | **Default filter** | **Default-exclude must be enforced at the repository layer**, not per query. A query that forgets the filter should exclude sandbox rows, not include them — the safe direction must be the lazy direction |
-| **Tag propagation** | Every sandbox-created aggregate carries the session id. **Audited: only `orders` does today — 1 of 22 tables** (F-S3). Ledger, payments, procurements, exceptions and reconciliation items carry no tag at all |
+| **Tag propagation** | Every sandbox-created aggregate carries the session id. **Audited: only `orders` does today — 1 of 21 tables** (F-S3). Ledger, payments, procurements, exceptions and reconciliation items carry no tag at all |
 | **Financial records** | Sandbox ledger entries must be tagged and **never included in balances, reconciliation, or any financial report**. **This is currently violated** — see F-S3, which is a confirmed live defect rather than a risk |
 | **Queues** | Shared broker, sandbox events tagged. Routing already handles worker context correctly |
 | **Cache** | **Sandbox session id in the cache key namespace.** A cached FX rate or resolution from a sandbox scenario must never serve a production request, and vice versa |

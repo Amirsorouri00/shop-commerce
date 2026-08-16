@@ -19,28 +19,21 @@ Phases 0–10 are complete and committed. **Phase 11 (traceability) is in progre
 | `docs/program/dependency-graph.md` | 4.0 KB | complete — five chains |
 | `docs/program/test-coverage-map.md` | 4.1 KB | complete |
 
-**Not yet done for Phase 11:**
-- `PROJECT-STATE.md` has **not** been updated for Phase 11.
-- The cross-phase adversarial review (Phase 11 §33) has **not** run.
-- The Phase 6 audit (§31) was launched and **cancelled** before reporting.
+**Phase 11 is now complete and both gates are closed** — the Phase 6 audit ran on its third attempt, and the cross-phase review ran. Both sets of findings are integrated. `PROJECT-STATE.md` is updated.
 
-**Last commit:** `4a20aaa` — Phase 10.
+**Remaining blocker for Phase 12:** Phase 9 executable sandbox parity (**G-21**) — `apps/admin` can filter sandbox rows but cannot enter a sandbox session, so no operator journey runs in one. Phase 12 must plan this rather than assume it.
 
 ## 3. Two gates that block Phase 12
 
 Both are explicit in the phase briefs and neither is satisfied. **Phase 12 should not begin until they are.**
 
-### Gate 1 — Phase 6 independent adversarial audit (outstanding since Phase 6)
+### Gate 1 — Phase 6 audit — **CLOSED**
 
-Commissioned in Phase 6, hit a session usage limit, carried through Phases 7–10, relaunched in Phase 11, cancelled before reporting. **Phase 6's backoffice artifacts are the only ones in the program never independently reviewed.**
+Ran on the third attempt. Found six defects no later phase had caught, including one that changes sequencing: **G-47**, the exception queue's cursor (`lt(id)`) is inconsistent with its sort (`desc(rank), desc(id)`) and is correct *only because ranks are currently uniform* — so fixing G-17 (ranking) first would silently corrupt queue pagination. It also disproved a claim repeated three times in Phase 6 and once in Phase 11: provider health **does** have a screen.
 
-Every other phase's adversarial review found defects the self-review missed — including, twice, defects that inverted a conclusion. Phase 6's artifacts are load-bearing for Phase 12's operator work packages, so this is a real risk rather than a formality.
+### Gate 2 — Phase 9 executable sandbox parity — **STILL OPEN**
 
-**To run it:** an `Explore` agent with the brief used in Phase 11 — verify F1–F9 against source, hunt enumeration failures, check the "1 of 11 areas complete" framing, and test the claim that all ~39 MASTER-PROMPT backoffice areas are covered or justifiably excluded.
-
-### Gate 2 — Phase 9 executable sandbox parity
-
-`apps/admin` contains **zero** sandbox references. No operator journey can execute in a sandbox session, so the "one integrated environment" requirement is unmet in fact, whatever the architecture says. Recorded as **G-21**.
+`apps/admin` has a "Demo orders" **filter** (`app/orders/page.tsx:71-125,298-306`) but **never sends `X-Sandbox-Session`** (`lib/api.ts`, 0 references), so it cannot create or enter a sandbox session. No operator journey can execute in one — the "one integrated environment" requirement is unmet. Recorded as **G-21**.
 
 ## 4. What a successor should distrust
 
@@ -51,8 +44,9 @@ This is the most useful section. The program's recurring failure mode has change
 | 5–8 | **Design contradictions** — self-review certified checks as passing that its own artifacts falsified | A `support:*` wildcard would have granted operator commands to every customer |
 | 9 | **Unverified assertions** — confident claims about code never opened | "Customs is folded into the carrier port" (false); "`NotificationPort` has no consumer" (false) |
 | 10 | **Verified but under-searched** — file opened, first instance confirmed, set never enumerated | Missed a second pre-payment refund path *while analysing the state machine*; described worker sandbox context as travelling in the event envelope when it is an order-row lookup |
+| 11 | **Enumerated the wrong set** — the rule was applied, to the wrong collection | §5 enumerated the 24-member event *constant* table instead of the 7 actual *emission sites*, producing three errors at once. Also asserted "`apps/admin` has zero sandbox references" across four documents when a Demo-orders filter exists |
 
-**Phase 11 exists partly to counter the third.** Its §2 enumeration rule is why this phase enumerated all 51 transition edges, all 24 event constants, all 3 settlement routes, all 8 adapters, and all 4 state-keyed maps rather than sampling. **That discipline found a defect four phases of review had missed** (G-19, below).
+**Phase 11 exists partly to counter the third, and partly succeeded.** The enumeration rule found G-19, G-46, G-47 and the `REFUND_PENDING` dead end. **It also violated itself** — see row 11. Enumerating *a* set is not the same as enumerating *the right* set.
 
 **Practical advice:** when a claim concerns a closed set, enumerate it programmatically. Several of this program's worst errors came from `grep` finding one match and reasoning stopping there.
 
@@ -62,7 +56,7 @@ Full detail in `gap-register.md`; these are the ones that would change what you 
 
 **Security / financial (P0):**
 - **G-05 — live concealment channel.** A customer can set `x-sandbox-session` on order creation and their real order vanishes from operator search, because exclusion already defaults on (`repositories.ts:249`, `schemas.ts:323`) while the client controls the tag. **Exploitable today.** This is the single most urgent item.
-- **G-06 — sandbox money moves production balances.** 1 of 22 tables carries a sandbox tag; `balance()` sums `ledgerEntries` unfiltered and cannot filter.
+- **G-06 — sandbox money moves production balances.** 1 of 21 tables carries a sandbox tag; `balance()` sums `ledgerEntries` unfiltered and cannot filter.
 - **G-03/G-04 — settlement.** Three settlement routes exist. The *verified* webhook is unreachable (no `@Public()` despite a docstring claiming it), while the *unverified* sandbox route is open and not production-gated. In production the only working settlement path is unauthenticated.
 - **G-11 — the event backbone is at-most-once** while documented at-least-once. `once()` marks an event processed before running the handler, so a throwing handler permanently suppresses redelivery. Affects all four consumers.
 
@@ -87,17 +81,17 @@ Two orderings, if reversed, make things **worse than doing nothing**:
 
 ## 7. Cheap fixes worth pulling forward
 
-Ungated, small, real consequence: **G-19** (timeline map totality), **G-20** (badge map — raw enum text currently reaches Persian customers), **G-22** (route `sms`/`storage` — a sandbox session can send a real SMS), **G-30**, **G-31**, **G-34**, **G-40**.
+Ungated, small, real consequence: **G-03** (a one-line `NODE_ENV` gate on the sandbox settle route — an unauthenticated production money-mover, and the cheapest P0 in the program), **G-12** (register resolution strategies — production currently registers none), **G-19**, **G-20** (raw enum text reaches Persian customers), **G-22** (a sandbox session can send a real SMS), **G-30**, **G-31**, **G-34**, **G-46**, **G-48**, **G-49**.
 
 ## 8. How to resume
 
-1. Run the Phase 6 audit (Gate 1); integrate findings into `gap-register.md` and the traceability artifact.
-2. Run the Phase 11 cross-phase adversarial review (§33) against the four staged artifacts. **Expect it to find defects** — every prior one did.
-3. Update `PROJECT-STATE.md` for Phase 11.
-4. Commit Phase 11.
-5. Only then begin Phase 12 work-package decomposition.
+Phase 11 is complete and committed. **Phase 12 (work-package decomposition) is next**, with three standing constraints:
 
-If limits prevent 1 or 2, **Phase 11 stays PROVISIONALLY COMPLETE and Phase 12 stays blocked** — that is the brief's own rule, and given how much every adversarial pass has found, it is the right one.
+1. **Respect the six dependency chains.** Two orderings are correctness-critical (§6), and Gate 1 added a third: **G-47 before G-17**.
+2. **Do not schedule permission-dependent features before the permission foundation** (G-13). Every operator capability designed in Phases 6–10 names a permission that does not exist in code.
+3. **Phase 9 executable sandbox parity (G-21) is still open.** Plan it; do not assume it.
+
+**Expect the Phase 12 adversarial review to find defects.** Every one of the seven that ran did, and two inverted a conclusion.
 
 ## 9. Conventions worth preserving
 
