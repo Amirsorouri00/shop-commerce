@@ -4,7 +4,7 @@
 
 ## Current phase
 
-**Phase 0–11 complete.** **Both outstanding gates are now closed:** Phase 6's independent adversarial audit finally ran (third attempt) and its findings are integrated; the Phase 11 cross-phase adversarial review ran and its findings are integrated. Phases 5–11 are architecture, design and analysis per the sequencing clarification below — **not** implementation. **Phase 9 executable sandbox parity remains UNRESOLVED** (G-21) and is the one substantive item Phase 12 must plan rather than assume. See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3), `docs/product/product-resolution.md` + `docs/ux/amazon-resolution-journeys.md` + `docs/architecture/product-resolution-architecture.md` (Phase 4), `docs/ux/{front-office-ia,front-office-interaction-spec,front-office-completeness-review}.md` (Phase 5), `docs/ux/{backoffice-operating-model,backoffice-ia,backoffice-completeness-review}.md` (Phase 6), and `docs/adr/ADR-001-internal-ops-is-not-an-organization.md` + `docs/architecture/{authorization-model,authorization-capability-matrix}.md` (Phase 7), `docs/design/{interaction-architecture,design-system,component-architecture}.md` (Phase 8), `docs/sandbox/{sandbox-architecture,security-and-isolation,scenario-catalog,e2e-journey-matrix}.md` (Phase 9), `docs/program/verified-defect-register.md` + `docs/architecture/{backend-domain-api-reconciliation,state-machine-reconciliation,api-design-standards,sandbox-isolation-backend}.md` (Phase 10), and `docs/program/{journey-capability-traceability,gap-register,dependency-graph,test-coverage-map}.md` (Phase 11). **Phase 12 (work-package decomposition) next.**
+**Phase 0–12 complete.** **Implementation has NOT begun and must not begin without explicit approval** — Phase 12 produced the implementation order for the remainder of the project, and the autonomous loop stops here by design. **Both outstanding gates are now closed:** Phase 6's independent adversarial audit finally ran (third attempt) and its findings are integrated; the Phase 11 cross-phase adversarial review ran and its findings are integrated. Phases 5–11 are architecture, design and analysis per the sequencing clarification below — **not** implementation. **Phase 9 executable sandbox parity remains UNRESOLVED** (G-21) and is the one substantive item Phase 12 must plan rather than assume. See `docs/program/00-current-state-assessment.md` (Phase 0), `docs/product/{product-boundary,capability-map,business-lines,mvp-vs-platform}.md` (Phase 1), `docs/product/{personas,jobs-to-be-done,account-and-organization-model,anti-personas}.md` (Phase 2), `docs/ux/{journey-map,service-blueprint,state-matrix}.md` (Phase 3), `docs/product/product-resolution.md` + `docs/ux/amazon-resolution-journeys.md` + `docs/architecture/product-resolution-architecture.md` (Phase 4), `docs/ux/{front-office-ia,front-office-interaction-spec,front-office-completeness-review}.md` (Phase 5), `docs/ux/{backoffice-operating-model,backoffice-ia,backoffice-completeness-review}.md` (Phase 6), and `docs/adr/ADR-001-internal-ops-is-not-an-organization.md` + `docs/architecture/{authorization-model,authorization-capability-matrix}.md` (Phase 7), `docs/design/{interaction-architecture,design-system,component-architecture}.md` (Phase 8), `docs/sandbox/{sandbox-architecture,security-and-isolation,scenario-catalog,e2e-journey-matrix}.md` (Phase 9), `docs/program/verified-defect-register.md` + `docs/architecture/{backend-domain-api-reconciliation,state-machine-reconciliation,api-design-standards,sandbox-isolation-backend}.md` (Phase 10), and `docs/program/{journey-capability-traceability,gap-register,dependency-graph,test-coverage-map}.md` (Phase 11), and `docs/program/work-packages/` + `docs/program/{implementation-dependency-graph,critical-path,defect-to-work-package-map,parallelization-plan}.md` (Phase 12). **Awaiting approval to begin WP-01.**
 
 ## Approved product boundaries
 
@@ -52,6 +52,25 @@ Full roster in `docs/product/personas.md`. Summary:
 - **Compliance gate** — master switch before production; not yet reviewed.
 
 Each gated integration must still ship with complete domain contract, port, sandbox adapter, UX states, config model, failure states, tests, and docs (MASTER-PROMPT §1) — existing sandbox architecture already does this for the three ports above per `handoff.md`; Phase 0 will verify actual coverage.
+
+## Implementation program (Phase 12)
+
+**25 work packages in 6 tranches.** Every one of the **52** gaps in the register is owned by exactly one package or deferred with rationale; **zero unassigned**.
+
+| Tranche | Theme | Packages |
+|---|---|---|
+| 0 | Immediate containment | WP-01 |
+| 1 | Integrity foundations | WP-02…WP-06 |
+| 2 | Operational foundations | WP-07…WP-10 |
+| 3 | Broken MVP journeys | WP-11…WP-16 |
+| 4 | Experience convergence | WP-17…WP-22 |
+| 5 | External adapters | WP-23…WP-25 |
+
+**Four hard orderings** — reversing any produces a worse outcome than not doing the work: **WP-03→WP-07** (exclusion on a client-settable tag becomes a concealment channel); **WP-08→WP-12** (ranking against an `id`-keyed cursor silently corrupts pagination); **WP-04→WP-11** (a review workflow with no rejection terminal fills a queue that never drains); **WP-05→WP-15** (notification guarantees on at-most-once delivery drop messages).
+
+**Critical path (9 of 25):** WP-01 → {02,03} → 04/06 → 10 → 11 → 13/14 → 22. Minimum serial depth 6 stages; WP-04 and WP-06 are independent and are the largest compression opportunity.
+
+**Deployment status:** no deployment evidence in the repository — `docker-compose.yml` defines infrastructure only, no CI, no deploy scripts, no hosting config. WP-01 is therefore the first implementation item rather than an emergency hotfix. **If the API is reachable beyond a developer machine, WP-01's containment becomes an immediate security hotfix** — a question the repo cannot answer.
 
 ## Completed work packages
 

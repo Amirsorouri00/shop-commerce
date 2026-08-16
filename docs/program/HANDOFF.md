@@ -81,7 +81,7 @@ Two orderings, if reversed, make things **worse than doing nothing**:
 
 ## 7. Cheap fixes worth pulling forward
 
-Ungated, small, real consequence: **G-03** (a one-line `NODE_ENV` gate on the sandbox settle route — an unauthenticated production money-mover, and the cheapest P0 in the program), **G-12** (register resolution strategies — production currently registers none), **G-19**, **G-20** (raw enum text reaches Persian customers), **G-22** (a sandbox session can send a real SMS), **G-30**, **G-31**, **G-34**, **G-46**, **G-48**, **G-49**.
+Ungated, small, real consequence: **G-03 containment** (an env gate on the sandbox settle route). **Containment ≠ fix**: the structural remedy spans WP-01 and WP-02, **G-12** (register resolution strategies — production currently registers none), **G-19**, **G-20** (raw enum text reaches Persian customers), **G-22** (a sandbox session can send a real SMS), **G-30**, **G-31**, **G-34**, **G-46**, **G-48**, **G-49**.
 
 ## 8. How to resume
 
