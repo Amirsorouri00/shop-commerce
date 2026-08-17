@@ -195,7 +195,7 @@ Constructed so Phase 12 cannot implement only one layer.
 
 | Hop | Mechanism | Status |
 |---|---|---|
-| Client → API | `X-Sandbox-Session` header | **IMPLEMENTED-BUT-DEFECTIVE** — trusted verbatim |
+| Client → API | `X-Sandbox-Session` header | **PARTIAL** — WP-01 made the header inert where sandbox is not permitted, at **both** read sites (`CorrelationMiddleware` and `createOrder`'s direct `@Headers`), and gated the worker's two re-entry points. **Where sandbox IS permitted the value is still trusted verbatim — that is WP-03** |
 | Server validation | — | **MISSING** |
 | Order persistence | `orders.sandboxSessionId` `schema.ts:238` | **IMPLEMENTED** — **1 of 21 tables** |
 | Payment / ledger / exception / reconciliation persistence | — | **MISSING** |
@@ -246,7 +246,7 @@ Constructed so Phase 12 cannot implement only one layer.
 | Integration health | **`/` queue home** — "Providers degraded" KPI tile + warning banner (`apps/admin/app/page.tsx:29,53,76-85`) | `GET /v1/admin/providers` | `ops\|admin` / `provider:read` | **IMPLEMENTED** — **CORRECTED.** Phase 6 claimed "no screen" three times and Phase 11 repeated it. Provider health *is* rendered on the queue home; what is missing is a dedicated detail view and any control action |
 | Config / countries | — | — | — / `config:*` | **MISSING** |
 | RBAC administration | — | — | — / `user:manage` | **MISSING** |
-| Sandbox control | — | `/v1/sandbox/*` | **`@Public()`** / `sandbox:control:*` | **IMPLEMENTED-BUT-DEFECTIVE** — anonymous |
+| Sandbox control | — | `/v1/sandbox/*` | **`ops\|finance\|admin`** (WP-01 interim) / `sandbox:control:*` | **IMPLEMENTED** — control plane authenticated and environment-gated; **the 2 browser-reachable gateway routes remain unauthenticated by necessity and unverified (WP-02)** |
 
 **Finance authorization, precisely:** `finance` **is** permitted at the two finance handlers (method-level `@Roles('finance','admin')` wins via `getAllAndOverride`). It is blocked from **order and customer** endpoints, which carry only the class-level `ops|admin`. So the finance operator can read the ledger and cannot reach the order a `refId` points at.
 

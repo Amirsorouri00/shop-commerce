@@ -1,7 +1,7 @@
 import { Redis } from 'ioredis';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Money, uuidv7, type DomainEvent } from '@xb/core';
-import { loadEnv } from '@xb/contracts';
+import { isSandboxPermitted, loadEnv } from '@xb/contracts';
 import { logger, metrics, runWithContext, deriveWorkerContext, createContext } from '@xb/observability';
 import { Broker, OutboxRelay, QUEUES, type OutboxSource } from '@xb/messaging';
 import { RedisSandboxSessionStore } from '@xb/sandbox';
@@ -39,6 +39,8 @@ import { routeByContext } from '../../api/src/composition/sandbox-routing.ts';
 
 async function main(): Promise<void> {
   const env = loadEnv();
+  // Resolved once, from the same policy the API's composition root and controllers use.
+  const sandboxPermitted = isSandboxPermitted(env);
   const db = createDatabase({ url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX });
   const redis = createRedis(env);
   const production = buildAdapters({ env, redis });
@@ -100,7 +102,10 @@ async function main(): Promise<void> {
       const orderId = (event.payload as { orderId?: string } | null)?.orderId;
       let sandboxSessionId: string | undefined;
 
-      if (orderId) {
+      // Only where the sandbox is permitted in this process. The session id is read from the
+      // order row, so without this gate a row stamped in some other environment would swap in
+      // simulated adapters here — sandbox routing in a worker with no sandbox to speak of.
+      if (orderId && sandboxPermitted) {
         const order = await new OrderRepository(db).findById(orderId);
         sandboxSessionId = order?.sandboxSessionId ?? undefined;
       }
@@ -360,7 +365,9 @@ async function main(): Promise<void> {
         }
       };
 
-      if (order.sandboxSessionId) {
+      // Same environment gate as the event consumer above — a stamped row must not re-enter
+      // sandbox routing in a process where the sandbox is not permitted.
+      if (order.sandboxSessionId && sandboxPermitted) {
         await runWithContext(
           createContext({
             correlationId: uuidv7(),

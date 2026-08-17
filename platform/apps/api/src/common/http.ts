@@ -25,6 +25,7 @@ import {
   type LocalizedMessage,
 } from '@xb/core';
 import { createContext, runWithContext, getContext, logger, logError, metrics, METRIC } from '@xb/observability';
+import { isSandboxPermitted, loadEnv } from '@xb/contracts';
 import type { Observable } from 'rxjs';
 
 /**
@@ -45,6 +46,16 @@ import type { Observable } from 'rxjs';
  */
 @Injectable()
 export class CorrelationMiddleware implements NestMiddleware {
+  /**
+   * Whether this process may interpret a sandbox session header at all.
+   *
+   * Resolved once from the same policy the composition root and the sandbox controller use.
+   * Without this the header would still reach the ambient context with the sandbox disabled,
+   * and `routeByContext` would happily swap in simulated adapters for any session id that
+   * still existed in Redis — sandbox behaviour with no sandbox routes to show for it.
+   */
+  private readonly sandboxPermitted = isSandboxPermitted(loadEnv());
+
   use(req: FastifyRequest['raw'] & { headers: Record<string, string | string[] | undefined> }, res: unknown, next: () => void): void {
     const inbound = req.headers['x-request-id'];
     const correlationId = typeof inbound === 'string' && inbound.length > 0 ? inbound : undefined;
@@ -53,7 +64,9 @@ export class CorrelationMiddleware implements NestMiddleware {
     const locale = typeof localeHeader === 'string' && localeHeader.startsWith('en') ? 'en' : 'fa';
 
     // Sandbox routing rides on the ambient context, so no service signature mentions it.
-    const sandboxHeader = req.headers['x-sandbox-session'];
+    // Not consulted at all where the sandbox is not permitted: the header is inert rather
+    // than merely unmatched, so it is not an attack surface in production.
+    const sandboxHeader = this.sandboxPermitted ? req.headers['x-sandbox-session'] : undefined;
     const sandboxSessionId = typeof sandboxHeader === 'string' ? sandboxHeader : undefined;
 
     const ctx = createContext({

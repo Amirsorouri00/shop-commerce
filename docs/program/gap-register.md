@@ -17,9 +17,9 @@
 
 | ID | Gap | Type | Owning context | Depends on | Evidence |
 |---|---|---|---|---|---|
-| **G-01** | Sandbox config fails open — unset `SANDBOX_ENABLED` yields `true`, gates nothing | security | composition | — | `env.ts:63-67`, `main.ts:91` |
-| **G-02** | Sandbox control plane anonymous — class `@Public()`; create/advance/reset/delete | security | API | G-01 | `sandbox.module.ts:111` |
-| **G-03** | Unauthenticated settlement in production — sandbox settle route not env-gated | security + financial | API | G-01 | `sandbox.module.ts:188-197` |
+| ~~G-01~~ | ~~Sandbox config fails open~~ — **CLOSED by WP-01.** `SANDBOX_MODE` is a strict enum defaulting to `disabled`; malformed values fail at boot; `isSandboxPermitted` is the single policy | security | composition | — | `env.ts:62-117` |
+| ~~G-02~~ | ~~Sandbox control plane anonymous~~ — **CLOSED by WP-01 (interim).** Class-level `@Public()` replaced by `@Roles('ops','finance','admin')`; the 2 browser-reachable gateway routes stay `@Public()` by necessity and are environment-gated. **Scoped permissions remain WP-06** | security | API | G-01 | `sandbox.module.ts` |
+| **G-03** | Unauthenticated settlement — **CONTAINED, NOT CLOSED.** WP-01 added the environment gate (the route 404s where sandbox is not permitted). It is **still unauthenticated and unverified where sandbox *is* permitted** — the structural fix is WP-02 | security + financial | API | G-01 | `sandbox.module.ts` |
 | **G-04** | Verified webhook unreachable — no `@Public()` despite docstring; default-deny blocks gateways | security | API | — | `commerce.module.ts:536-549` |
 | **G-05** | Client-controlled sandbox tag → **live concealment channel** (exclusion already defaults on) | security | request context | — | `commerce.module.ts:493-499`, `repositories.ts:249`, `schemas.ts:323` |
 | **G-06** | Sandbox money moves production balances — 1 of 21 tables tagged; `balance()` unfiltered | financial | persistence | G-05 | `schema.ts:238`, `repositories.ts:600-610` |
@@ -60,6 +60,13 @@
 | **G-49** | **Admin money commands ignore the idempotency key they are sent.** No admin route carries `@Idempotent()`; the admin client sends `Idempotency-Key` on procurement confirm, which posts double-entry ledger lines. Only `assertTransition` accidentally blocks a replay | financial | Procurement | — | `admin.module.ts:216-225`; `admin/lib/api.ts:149` |
 | **G-50** | **`resolveException` has no actor parameter** — writes only `resolvedAt`/`resolutionNote`, so shipping it as-is produces an unattributed resolution, violating the program's own audit rule | authorization + observability | Exception | G-17 | `admin.module.ts:305`; `repositories.ts:649` |
 | **G-51** | **Backoffice capability matrix omits four required capabilities** — MASTER-PROMPT `:609-625` requires sorting, saved filters/views, exports, and history; none appear in the Phase 6 matrix. Exports are load-bearing for finance hand-off, saved views for repeated triage | UI + API | backoffice | G-13 | `MASTER-PROMPT.md:609-625` |
+
+## New — found during WP-01 implementation
+
+| ID | Gap | Type | Owner | Evidence |
+|---|---|---|---|---|
+| **G-53** | **`NODE_ENV` defaults to `'development'`** (`env.ts:20`), so an unset `NODE_ENV` in a production deployment silently defeats **both** the sandbox production-refusal and the dev-gateway's 404. WP-01 removed one "unset means permissive" default and now depends on another. **Not fixed in WP-01**: changing this default affects every environment-conditional in the program and needs a scoped decision, not a side effect of a containment package | security | **unassigned — needs a scoped decision** | `env.ts:20`, `dev-gateway.module.ts:42` |
+| **G-54** | The front-office `DemoPanel` calls the sandbox control plane with `skipAuth: true` (`apps/web/lib/api.ts:309-331`) and customer tokens carry role `customer`, so the customer-facing demo is now non-functional even when sandbox is enabled. **Intended** — Phase 9 required a public demo be separately scoped rather than inheriting operator controls — but the scoped replacement does not exist | UI + sandbox | **WP-22** | verified |
 
 ## P2
 

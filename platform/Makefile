@@ -50,7 +50,7 @@ APP_PORTS := 4000 4001 3010 3011
 #
 # Without this, .env always wins and trying a different adapter means editing a file that is
 # deliberately gitignored — which is exactly the thing you want to avoid doing casually.
-OVERRIDABLE := NODE_ENV LOG_LEVEL SANDBOX_ENABLED \
+OVERRIDABLE := NODE_ENV LOG_LEVEL SANDBOX_MODE SANDBOX_ALLOW_IN_PRODUCTION \
                SMS_PROVIDERS STORE_PROVIDERS FX_PROVIDERS PAYMENT_PROVIDERS CARRIER_PROVIDERS
 
 # Sourced into every process we start. `set -a` exports each assignment.

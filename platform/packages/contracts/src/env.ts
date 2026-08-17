@@ -59,19 +59,64 @@ export const envSchema = z.object({
   STORE_PROVIDERS: csv(['stub']),
   CARRIER_PROVIDERS: csv(['stub']),
 
-  /** Enables the sandbox routes and the demo control panel. Off in production. */
-  SANDBOX_ENABLED: z
-    .string()
-    .optional()
-    .transform((v) => v !== 'false')
-    .pipe(z.boolean()),
+  /**
+   * Sandbox enablement. Fails closed.
+   *
+   * A strict enum with an explicit default rather than a coerced boolean. The previous
+   * `.optional().transform((v) => v !== 'false')` meant an *unset* variable evaluated to
+   * `true` — the sandbox enabled itself wherever nobody had said otherwise, under a comment
+   * claiming it was off in production. An enum makes "unset" and "misspelled" two different
+   * outcomes: unset is `disabled`, and anything unrecognised is a boot failure rather than a
+   * silent fallback in either direction.
+   */
+  SANDBOX_MODE: z.enum(['disabled', 'enabled']).default('disabled'),
+
+  /**
+   * Permission for sandbox to run in production, which is a separate question from whether
+   * sandbox is on. One flag cannot distinguish "this is a demo environment and we meant it"
+   * from "nobody configured this" — and it is the second case that has to be impossible.
+   */
+  SANDBOX_ALLOW_IN_PRODUCTION: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((v) => v === 'true'),
 
   ZARINPAL_MERCHANT_ID: z.string().optional(),
   IDPAY_API_KEY: z.string().optional(),
   KAVENEGAR_API_KEY: z.string().optional(),
   SMSIR_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
-});
+})
+  /**
+   * Sandbox in production requires two deliberate statements, not one.
+   *
+   * Enforced here rather than at the call site so it is a boot failure: a warning in a log
+   * nobody reads is how the previous fail-open default survived this long.
+   */
+  .superRefine((env, ctx) => {
+    if (env.NODE_ENV === 'production' && env.SANDBOX_MODE === 'enabled' && !env.SANDBOX_ALLOW_IN_PRODUCTION) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SANDBOX_MODE'],
+        message:
+          'refusing to enable sandbox in production: set SANDBOX_ALLOW_IN_PRODUCTION=true only if a production demo environment is genuinely intended',
+      });
+    }
+  });
+
+/**
+ * Is the sandbox surface permitted to exist in this process?
+ *
+ * One resolved policy, consulted by both enforcement points — the composition root, which
+ * decides whether the routes exist at all, and the controller, which 404s if they somehow do.
+ * Two enforcement points reading one rule, rather than two rules that can disagree.
+ */
+export function isSandboxPermitted(env: Env): boolean {
+  if (env.SANDBOX_MODE !== 'enabled') return false;
+  // `=== true` rather than truthiness: the flag is a boolean only after the schema's transform
+  // has run, and an unparsed value would arrive as the string 'false', which is truthy.
+  return env.NODE_ENV !== 'production' || env.SANDBOX_ALLOW_IN_PRODUCTION === true;
+}
 
 export type Env = z.infer<typeof envSchema>;
 

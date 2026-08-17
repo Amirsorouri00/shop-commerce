@@ -8,6 +8,7 @@ import {
   JwtAuthGuard,
   Public,
 } from './common/http.ts';
+import { isSandboxPermitted, loadEnv } from '@xb/contracts';
 import { InfrastructureModule } from './infrastructure.module.ts';
 import { AuthModule, AuthService } from './modules/auth.module.ts';
 import { CommerceModule } from './modules/commerce.module.ts';
@@ -39,7 +40,15 @@ export class HealthController {
     AuthModule,
     CommerceModule,
     AdminModule,
-    SandboxModule,
+    // Registered only where the sandbox is permitted, so in every other environment the
+    // routes do not exist rather than existing and refusing. The controller enforces the same
+    // rule again for the case where something registers this module directly — two
+    // enforcement points, but both read `isSandboxPermitted`, so they cannot disagree.
+    //
+    // This differs from DevGatewayModule below deliberately. That module is two routes behind
+    // one check; this one is eight, including a settlement route that posts to the ledger, so
+    // the surface not existing at all is worth the conditional.
+    ...(isSandboxPermitted(loadEnv()) ? [SandboxModule] : []),
     // Registered unconditionally; the controller itself 404s outside development, so the
     // route's absence in production is enforced by one rule in one place rather than by
     // remembering to exclude a module here as well.

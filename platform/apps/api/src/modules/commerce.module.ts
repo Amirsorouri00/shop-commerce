@@ -32,6 +32,7 @@ import {
   type OrderState,
   type ProductRequestDto,
   type QuoteDto,
+  isSandboxPermitted,
 } from '@xb/contracts';
 import type { Env } from '@xb/contracts';
 import { correlationId, logger, metrics, METRIC } from '@xb/observability';
@@ -445,6 +446,7 @@ export class CommerceController {
     private readonly orders: OrderService,
     @Inject(STORE_PORT) private readonly store: StorePort,
     @Inject(PAYMENT_PORT) private readonly payment: PaymentPort,
+    @Inject(ENV) private readonly env: Env,
   ) {}
 
   // Public: a visitor can price an item before they have an account. Auth is required from
@@ -492,11 +494,20 @@ export class CommerceController {
     @Actor() actor: AuthenticatedActor,
     @Headers('x-sandbox-session') sandboxSession: string | undefined,
   ) {
+    // The header is read directly here rather than from the ambient context, so it needs its
+    // own environment gate: without one, an order could still be stamped as sandbox data in a
+    // process where the sandbox does not exist, and the operator order search — which excludes
+    // sandbox rows by default — would stop showing it.
+    //
+    // This is the environment half only. Validating that the session exists and belongs to the
+    // caller is WP-03's server-authoritative provenance and is deliberately not done here.
+    const sandboxSessionId = isSandboxPermitted(this.env) ? sandboxSession : undefined;
+
     return this.orders.create({
       quoteId: body.quoteId,
       addressId: body.addressId,
       customerId: actor.id,
-      ...(sandboxSession ? { sandboxSessionId: sandboxSession } : {}),
+      ...(sandboxSessionId ? { sandboxSessionId } : {}),
     });
   }
 

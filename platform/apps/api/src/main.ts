@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { loadEnv } from '@xb/contracts';
+import { loadEnv, isSandboxPermitted } from '@xb/contracts';
 import { logger } from '@xb/observability';
 import { closeDatabase } from '@xb/db';
 import { AppModule } from './app.module.ts';
@@ -88,7 +88,7 @@ async function bootstrap(): Promise<void> {
   await app.listen({ port: env.API_PORT, host: '0.0.0.0' });
 
   logger.info(
-    { port: env.API_PORT, env: env.NODE_ENV, sandbox: env.SANDBOX_ENABLED },
+    { port: env.API_PORT, env: env.NODE_ENV, sandbox: isSandboxPermitted(env) },
     'API listening',
   );
 
