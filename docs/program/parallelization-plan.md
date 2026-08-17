@@ -55,6 +55,14 @@ Concurrent edits here produce merge conflicts that are **semantically dangerous*
 | WP-02 ∥ WP-07 | Both edit the composition root |
 | WP-06 ∥ anything touching route decorators | The guard is being replaced beneath them |
 
+## Bookkeeping during parallel execution
+
+**Implementation branches must not update shared program-state documents.** `PROJECT-STATE.md`, `gap-register.md`, `journey-capability-traceability.md`, `defect-to-work-package-map.md` and any Graphify artifact are touched by every package and would otherwise become guaranteed merge conflicts — artificial ones, since the packages themselves are genuinely independent.
+
+Instead: **each package records its required state changes in a completion artifact**, `docs/program/work-packages/completions/WP-NN-completion.md`, covering gaps closed or newly found, traceability rows changed, status transitions, and any decision made in-flight. After a wave's branches land, **one integration-state reconciliation** applies them all.
+
+**The code packages are parallelizable; the bookkeeping does not need to be.**
+
 ## Branch strategy
 
 One branch per package, named `wp-NN-<slug>`. **Rebase onto main before merge, never merge main into the branch** — a stale composition root or transition table is exactly the kind of conflict that resolves cleanly and behaves wrongly.

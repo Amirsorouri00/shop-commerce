@@ -20,6 +20,10 @@ Related: **G-49** — `confirmProcurement` (`admin.module.ts:210`) and `settlePa
 
 **Included:** add `@Public()` to `WebhookController` so the verified path works as documented; **retire the sandbox settle route as a settlement path** — it becomes a control-plane action that makes the simulated gateway emit a callback into the *normal verified ingress*; make `verifyWebhook` routable so a sandbox verifier judges sandbox callbacks (currently synchronous, always production — `sandbox-routing.ts:27`); apply idempotency keys to ledger-posting commands; **amount verification** against the order total, which no route performs today.
 
+**Also owns G-53 as an explicit prerequisite sub-scope.** `NODE_ENV` defaults to `'development'` (`env.ts:20`), so an unset value in production defeats both the sandbox production-refusal and the dev-gateway's 404 — and this package's whole subject is distinguishing development and sandbox behaviour from production payment ingress, which is exactly the distinction that default undermines.
+
+**Do this before touching it:** enumerate **every functional `NODE_ENV` read in the repository** and classify each one's semantics. Do not change the default until the blast radius is understood. If the right answer is a validated `APP_ENV` / runtime-environment concept rather than changing `NODE_ENV` itself, implement the smallest architecture-consistent solution. **Production-sensitive security behaviour must never infer "development" from absence.**
+
 **Also owns G-15** — nothing anywhere transitions an order to `PAYMENT_FAILED`; the topology already exists (`order-state-machine.ts:19,35`), so this package adds the **producer** on the decline path. Named explicitly because an earlier draft assigned it without scope text.
 
 **Excluded:** real gateway integration (WP-24); financial isolation (WP-07).

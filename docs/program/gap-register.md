@@ -65,7 +65,11 @@
 
 | ID | Gap | Type | Owner | Evidence |
 |---|---|---|---|---|
-| **G-53** | **`NODE_ENV` defaults to `'development'`** (`env.ts:20`), so an unset `NODE_ENV` in a production deployment silently defeats **both** the sandbox production-refusal and the dev-gateway's 404. WP-01 removed one "unset means permissive" default and now depends on another. **Not fixed in WP-01**: changing this default affects every environment-conditional in the program and needs a scoped decision, not a side effect of a containment package | security | **unassigned — needs a scoped decision** | `env.ts:20`, `dev-gateway.module.ts:42` |
+| **G-53** | **`NODE_ENV` defaults to `'development'`** (`env.ts:20`), so an unset `NODE_ENV` in a production deployment silently defeats **both** the sandbox production-refusal and the dev-gateway's 404. WP-01 removed one "unset means permissive" default and now depends on another | security | **WP-02, as an explicit prerequisite sub-scope** | `env.ts:20`, `dev-gateway.module.ts:42` |
+
+**Why WP-02 owns G-53.** It is the next security-boundary package, and its correctness depends on accurately distinguishing development and sandbox behaviour from production payment ingress — the same distinction G-53 undermines. Not WP-03 (which owns session provenance, a different trust question) and not WP-06 (authorization, unrelated to environment inference).
+
+**Binding prerequisite before implementing G-53:** enumerate **every functional `NODE_ENV` read in the repository** and classify its semantics. Do not change `NODE_ENV` default behaviour until the blast radius is understood. If the correct solution is a validated `APP_ENV` / runtime-environment concept rather than changing `NODE_ENV` itself, implement the smallest architecture-consistent solution. **Production-sensitive security behaviour must never infer "development" from absence.**
 | **G-54** | The front-office `DemoPanel` calls the sandbox control plane with `skipAuth: true` (`apps/web/lib/api.ts:309-331`) and customer tokens carry role `customer`, so the customer-facing demo is now non-functional even when sandbox is enabled. **Intended** — Phase 9 required a public demo be separately scoped rather than inheriting operator controls — but the scoped replacement does not exist | UI + sandbox | **WP-22** | verified |
 
 ## P2
