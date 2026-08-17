@@ -19,6 +19,7 @@ SECURITY
 WP-01 ──┬──> WP-02 ──> WP-14, WP-22, WP-24
         │            (WP-02 widens G-06 — pair it with WP-07 or gate sandbox
         │             settlement until WP-07 lands)
+        │            WP-14 additionally requires WP-03 + WP-07 (ledger tagging)
         └──> WP-03 ──> WP-07 ──> WP-09, WP-22
                         (WP-03 BEFORE WP-07 — hard)
 
@@ -37,7 +38,7 @@ WP-08 ──> WP-12                (WP-08 BEFORE WP-12 — hard)
 WP-10 ──> WP-11, WP-12, WP-20
 
 EXPERIENCE
-WP-17 ──> WP-20, WP-21
+WP-17a ──> WP-20, WP-21        (WP-17b: contract rename, scheduled after Tranche 2)
 WP-18 ──> WP-21
 WP-19 ──> WP-13, WP-21
 WP-20 ──> WP-22

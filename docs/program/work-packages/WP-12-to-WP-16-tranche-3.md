@@ -44,7 +44,13 @@
 
 **Owns:** G-14a *(refund execution — newly assigned; an earlier draft gave this package G-25 and G-27, which belong to WP-15 and WP-04/WP-21 respectively, leaving a P0 on the critical path owning nothing)*, and the **implementation** of `RefundEligibility` moved here from WP-04.
 
-**Why.** Refund is **entirely unbuilt, not partial** — nothing anywhere transitions into `REFUND_PENDING`, and `PaymentPort.refund()` has no callers. Worse, the Phase 11 dead-end audit found an operator **can** enter `REFUND_PENDING` via the generic transition endpoint while **nothing performs `→ REFUNDED`**: entry reachable, exit not. An operator acting in good faith today can strand an order permanently.
+**Why — stated precisely, because two loose phrasings contradicted each other in an earlier draft.**
+
+There is **no purpose-built refund execution path**: no application producer transitions an order into `REFUND_PENDING`, no producer performs `REFUND_PENDING → REFUNDED`, and `PaymentPort.refund()` has **no callers**.
+
+`REFUND_PENDING` is nonetheless **reachable today** — an operator can select it through the **generic** `POST /v1/admin/orders/:id/transition` endpoint, which accepts any legal target from the request body.
+
+**The two facts together are the defect:** entry is reachable via a generic mechanism, exit has no producer at all. An operator acting in good faith can strand an order permanently in a refund state that nothing can resolve.
 
 **Scope.** **Implement `RefundEligibility`** — the predicate WP-04 declares and cannot satisfy (settled payment exists, amount > 0, none in flight, provider supports refund). It is a **domain** service, not a controller check, because the worker, the operator command, and any future automated path all need it. **This package owns the invariant outright**; WP-04 owns only the topology and the guard points.
 

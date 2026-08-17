@@ -36,7 +36,7 @@
 | G-23 `verifyWebhook` unroutable | **WP-02** |
 | G-24 reconciliation matcher absent | **WP-25** |
 | G-25 notification emitter + adapter | **WP-15** |
-| **G-14a refund execution** *(new ID — WP-14 previously owned nothing)* | **WP-14** |
+| **G-14a** refund execution *(ID created in the Phase 12 review; WP-14 previously owned nothing)* | **WP-14** |
 | G-26 address update/delete | **WP-21** |
 | G-27 no cancellation command | **WP-21** owns the command and customer surface; **WP-04** owns only the topology. *An earlier split left the command itself unowned — WP-04 is domain-only and WP-21 is UI* |
 | G-46 order search row duplication | **WP-08** |
@@ -48,7 +48,7 @@
 
 ## P2 — owned
 
-**G-19** `STATE_TO_STEP_INDEX` 12/24 → **WP-18** *(P2 per the register's own correction; an earlier version of this map counted it as P1 to reach a total of 21)* · G-28 dead event constants → WP-05 · G-29 producers without consumers → WP-05 · G-30 `detectStalls` only logs → WP-12 · G-31 ledger DTO exposure → WP-09 · G-33 money field naming → **WP-17b** · G-34 mixed units in `QuoteBreakdown` → WP-17a · G-35 catalogue vs chargeable weight → WP-23 · G-36 seven resolution fields → WP-23 · G-37 unbounded retry cycles → WP-04 · G-38 session TTL slide / no CAS → WP-03 · G-39 `availableActions` → WP-19 · **G-52** eight orphaned repository methods → **WP-08** *(the register files it under a "Later" heading; it is scheduled in Tranche 2 because two of the eight are reads the IA lists as missing)*.
+**G-19** `STATE_TO_STEP_INDEX` 12/24 → **WP-18** *(P2 per the register's own correction; an earlier version of this map counted it as P1 to reach a total of 21)* · G-28 dead event constants → WP-05 · G-29 producers without consumers → WP-05 · G-30 `detectStalls` only logs → WP-12 · G-31 ledger DTO exposure → WP-09 · G-33 money field naming → **WP-17b** *(stage 2 of WP-17, not a separate package)* · G-34 mixed units in `QuoteBreakdown` → **WP-17a** *(stage 1 of WP-17)* · G-35 catalogue vs chargeable weight → WP-23 · G-36 seven resolution fields → WP-23 · G-37 unbounded retry cycles → WP-04 · G-38 session TTL slide / no CAS → WP-03 · G-39 `availableActions` → WP-19 · **G-52** eight orphaned repository methods → **WP-08** *(the register files it under a "Later" heading; it is scheduled in Tranche 2 because two of the eight are reads the IA lists as missing)*.
 
 **Ownership is nominal for five gaps** — G-29, G-30, G-37, G-38 and G-19 are assigned but do **not** appear in their owning package's scope text. **Each owner must add an explicit scope line before that package is READY**, or the assignment is bookkeeping rather than ownership.
 

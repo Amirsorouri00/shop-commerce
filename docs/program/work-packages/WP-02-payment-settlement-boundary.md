@@ -20,6 +20,8 @@ Related: **G-49** — `confirmProcurement` (`admin.module.ts:210`) and `settlePa
 
 **Included:** add `@Public()` to `WebhookController` so the verified path works as documented; **retire the sandbox settle route as a settlement path** — it becomes a control-plane action that makes the simulated gateway emit a callback into the *normal verified ingress*; make `verifyWebhook` routable so a sandbox verifier judges sandbox callbacks (currently synchronous, always production — `sandbox-routing.ts:27`); apply idempotency keys to ledger-posting commands; **amount verification** against the order total, which no route performs today.
 
+**Also owns G-15** — nothing anywhere transitions an order to `PAYMENT_FAILED`; the topology already exists (`order-state-machine.ts:19,35`), so this package adds the **producer** on the decline path. Named explicitly because an earlier draft assigned it without scope text.
+
 **Excluded:** real gateway integration (WP-24); financial isolation (WP-07).
 
 ## Architecture

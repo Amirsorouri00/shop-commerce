@@ -8,7 +8,7 @@ Concurrent edits here produce merge conflicts that are **semantically dangerous*
 
 | File | Owner | Why |
 |---|---|---|
-| `apps/api/src/domain/order-state-machine.ts` | **WP-04** | The transition table plus six state-keyed maps. Two agents editing it can produce a topology neither intended |
+| `apps/api/src/domain/order-state-machine.ts` | **WP-04** | The transition table plus **four** state-keyed maps (`TERMINAL_STATES`, `EXCEPTION_STATES`, `STATE_TO_STEP_INDEX`, `ALERTS`). Two agents editing it can produce a topology neither intended. `CARRIER_STATUS_MAP` lives here too but is keyed by carrier strings, not state |
 | `apps/api/src/composition/adapters.ts` | **WP-02**, then **WP-07** | The composition root binds every port. Serialize |
 | `apps/api/src/common/http.ts` | **WP-06** | The authorization guard. A second editor risks silently widening access |
 | `packages/contracts/src/schemas.ts` | coordinated | Touched by many packages. **Additive-only** during Tranche 1–2; no field renames without a scheduled slot |
@@ -18,30 +18,29 @@ Concurrent edits here produce merge conflicts that are **semantically dangerous*
 | `apps/api/src/composition/sandbox-routing.ts` | **WP-03** | Trust boundary |
 | `apps/worker/src/main.ts` | **WP-05** | Event semantics |
 
-## Safe parallel sets
+## Canonical execution schedule
 
-**Wave 1 — start together (no prerequisites):**
-`WP-04` · `WP-06` · `WP-08` · `WP-17`
+**This is the only schedule.** Historical corrections live in the Phase 12 review record, not here — an execution artifact that carries its own revision history invites an implementer to follow the wrong line.
 
-**Two packages removed from Wave 1 after review found the "disjoint file sets" claim false:**
+| Wave | Packages | Prerequisites satisfied by |
+|---|---|---|
+| **0** | `WP-01` **alone** | — |
+| **1** | `WP-04` ∥ `WP-06` ∥ `WP-08` ∥ `WP-17a` | — (all four are ungated) |
+| **2** | `WP-02` ∥ `WP-03` ∥ `WP-05` | WP-01 (for 02, 03) |
+| **3** | `WP-07` ∥ `WP-10` ∥ `WP-18` ∥ `WP-19` | WP-03 (07) · WP-06+WP-08 (10) · WP-04 (18, 19) |
+| **4** | `WP-09` ∥ `WP-11` ∥ `WP-12` ∥ `WP-15` | WP-06+WP-07 (09) · WP-04+WP-06+WP-10 (11) · WP-08+WP-06+WP-10 (12) · WP-05 (15) |
+| **5** | `WP-13` ∥ `WP-14` | WP-19 (13) · WP-03+WP-07 (14) |
+| **6** | `WP-16` ∥ `WP-20` ∥ `WP-17b` | WP-14 (16) · WP-10+WP-17a (20) · Tranche 2 complete (17b) |
+| **7** | `WP-21` ∥ `WP-22` | WP-17a+WP-18+WP-19 (21) · WP-03+WP-07+WP-20 (22) |
+| **8** | `WP-23` ∥ `WP-24` ∥ `WP-25` | WP-11 (23) · WP-02 (24) · WP-09+WP-05 (25) |
 
-- **WP-01 cannot run beside WP-06.** WP-01's interim authentication removes `@Public()` from `sandbox.module.ts:111` and reads `common/http.ts:220-260` — the guard file WP-06 owns exclusively while replacing it. **WP-01 runs first, alone**, which suits it: it is Tranche 0 containment.
-- **WP-04 cannot run beside WP-05.** WP-04's context contract reads `apps/worker/src/main.ts:150-200,310-345`; WP-05's emission sites are `:179` and `:344` — **inside both ranges**, on the file WP-05 owns. **WP-05 moves to Wave 2.**
+**WP-01 runs alone** because its interim authentication edits `apps/api/src/common/http.ts`, the guard file WP-06 replaces.
 
-**WP-04 and WP-06 remain genuinely independent** — the two biggest foundations, and the largest compression opportunity in the program.
+**WP-05 is in Wave 2, not Wave 1**, because WP-04's context range (`apps/worker/src/main.ts:150-200,310-345`) covers WP-05's emission sites (`:179`, `:344`).
 
-**Wave 0 — alone:** `WP-01`.
+**WP-14 is in Wave 5, not Wave 4**, because it posts ledger entries and ships sandbox `REF-01`, so it requires WP-07's ledger tagging.
 
-**Wave 2 — after WP-01:**
-`WP-02` ∥ `WP-03` ∥ `WP-05` — file-disjoint (payment ingress / request context / worker).
-
-**Wave 3:**
-`WP-07` (needs WP-03) ∥ `WP-09` (needs WP-06+WP-07 — so actually Wave 4) ∥ `WP-10` (needs WP-06+WP-08) ∥ `WP-18` (needs WP-04) ∥ `WP-19` (needs WP-04+WP-06)
-
-**Wave 4 — Tranche 3, mostly parallel:**
-`WP-11` ∥ `WP-12` ∥ `WP-14` ∥ `WP-15`. **WP-13 must follow WP-19.** **WP-16 must follow WP-14** (it triggers the refund path).
-
-**Wave 5:** `WP-20` → `WP-21` ∥ `WP-22`. **Wave 6:** `WP-23` ∥ `WP-24` ∥ `WP-25`.
+**Coupling note for Wave 2:** WP-02 routes sandbox settlement through the production settlement path, which posts into an untagged ledger until WP-07 lands in Wave 3. Either keep sandbox settlement disabled between Wave 2 and Wave 3, or schedule WP-07 immediately after WP-02. **This is a decision, not a default.**
 
 ## Never parallel
 

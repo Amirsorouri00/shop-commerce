@@ -41,7 +41,7 @@
 
 | ID | Title | Owns | Depends on |
 |---|---|---|---|
-| **WP-02** | Payment settlement boundary | G-03 (structural), G-04, G-23, G-49 | WP-01 |
+| **WP-02** | Payment settlement boundary | **G-03 (structural half — WP-01 owns containment)**, G-04, G-15, G-23, G-49 | WP-01 |
 | **WP-03** | Server-authoritative sandbox provenance | G-05 | WP-01 |
 | **WP-04** | Order lifecycle integrity | G-07, G-08, G-09, dead-end audit | — |
 | **WP-05** | Event delivery semantics | G-11, G-28 | — |
@@ -60,22 +60,22 @@
 
 | ID | Title | Owns | Depends on |
 |---|---|---|---|
-| **WP-11** | Manual product resolution — end-to-end operator recovery | G-10, G-12 | **WP-04**, WP-06, WP-10 |
+| **WP-11** | Manual product resolution — end-to-end operator recovery | **G-10** *(G-12 belongs to WP-23; WP-11 only surfaces its production consequence)* | **WP-04**, WP-06, WP-10 |
 | **WP-12** | Exception operations | G-17, G-50 | **WP-08**, WP-06, WP-10 |
-| **WP-13** | Customer exception decisions | G-14 | **WP-04**, WP-19 |
-| **WP-14** | Refund capability | G-25(refund), G-27 | **WP-04**, WP-02, WP-06 |
-| **WP-15** | Notification delivery | G-25(notif) | **WP-05** |
+| **WP-13** | Customer exception decisions | G-14 | **WP-04**, WP-06, WP-19 |
+| **WP-14** | Refund capability | **G-14a** (refund execution) | **WP-04**, **WP-03**, **WP-07**, WP-02, WP-06 |
+| **WP-15** | Notification delivery | G-25 | **WP-05** |
 | **WP-16** | Support capability | G-16 | WP-06, WP-14 |
 
 ### Tranche 4 — experience convergence
 
 | ID | Title | Owns | Depends on |
 |---|---|---|---|
-| **WP-17** | Design tokens & money presentation | G-33, G-34 | — |
+| **WP-17** | Design tokens & money presentation — **two stages: 17a tokens/conversion, 17b contract rename** | G-34 (17a), G-33 (17b) | — (17a) · Tranche 2 complete (17b) |
 | **WP-18** | State presentation totality | G-19, G-20 | WP-04 |
 | **WP-19** | Available-actions API | G-39 | WP-04, WP-06 |
-| **WP-20** | Admin Vite migration | superseding decision | WP-10, WP-17 |
-| **WP-21** | Front-office journey slices | G-26, C1–C28 | WP-17, WP-18, WP-19 |
+| **WP-20** | Admin Vite migration | superseding decision | WP-10, WP-17a |
+| **WP-21** | Front-office journey slices | G-26, G-27 (customer surface + command) | WP-17a, WP-18, WP-19 |
 | **WP-22** | Sandbox executable parity | **G-21** | WP-03, WP-07, WP-20 |
 
 ### Tranche 5 — external adapters
@@ -86,7 +86,7 @@
 | **WP-24** | Real payment gateway | EXTERNAL-GATE | WP-02 |
 | **WP-25** | Reconciliation | G-24 | WP-09, WP-05 |
 
-**25 packages.**
+**25 packages.** WP-17 is one package executed in **two named stages** (17a, 17b) rather than two packages: they share the money invariant, and this program's rule is one invariant, one owner. The split is a *scheduling* constraint — 17b renames a contract field, which the parallelization plan forbids during Tranches 1–2 — not a scope division. **17b is not READY until Tranche 2 completes; 17a has no prerequisites.**
 
 ## Ordering constraints that are correctness-critical
 
@@ -137,3 +137,34 @@ Broke the plan in fourteen places. All verified against source; **none rejected*
 **Also corrected:** fan-out counts conflated direct with transitive dependents; `apps/admin/lib/api.ts` (four packages) and `apps/web/lib/order-display.ts` (two) had no owner in the contention table; WP-17 split into **17a** (Wave 1) and **17b** (contract rename, scheduled slot) because the rename collides with the plan's own additive-only rule for Tranches 1–2.
 
 **The failure mode this phase exhibited:** the program was internally inconsistent in ways no single document revealed — README, dependency graph, critical path, and package docs each said something slightly different about the same package. **A plan is a closed set too**, and it needed the same cross-checking the code did.
+
+---
+
+## Reconciliation pass (documentation-only)
+
+Performed before WP-01, to make every execution artifact describe the same package graph. **No scope was redesigned and no application code was touched.**
+
+### Corrections applied
+
+| # | Inconsistency | Resolution |
+|---|---|---|
+| 1 | WP-04's prose said **four** state-keyed maps; its acceptance criterion and the parallelization plan still said **six** | Normalized to **four** — `TERMINAL_STATES`, `EXCEPTION_STATES`, `STATE_TO_STEP_INDEX`, `ALERTS`. `CARRIER_STATUS_MAP` is `Record<string, OrderState>`, keyed by carrier strings, so state totality does not apply; `STATE_BADGES` is a frontend file owned by WP-18 |
+| 2 | WP-04's test and acceptance language claimed it could prove a settled payment exists — impossible for a domain/topology-only package | WP-04 now proves **topological** invariants only: no pre-`PAID` state has any path to `REFUND_PENDING`, and guard points exist at every inbound edge. The **financial** invariant is asserted once, in WP-14, where the predicate lives |
+| 3 | README assigned WP-14 **G-25/G-27**, contradicting the canonical defect map (G-25→WP-15, G-27→WP-21, refund execution→G-14a) | README now matches the map. Also corrected: WP-02 owns the **structural half** of G-03 (WP-01 owns containment) plus **G-15**; WP-11 owns **G-10 only** — G-12 is WP-23's, and WP-11's acceptance no longer claims production strategy registration while excluding the work |
+| 4 | WP-17a/17b were described inconsistently as a split package and as stages | **Decided: one package, two named stages.** They share the money invariant and this program's rule is one invariant, one owner; the split is a *scheduling* constraint (17b renames a contract field, forbidden during Tranches 1–2), not a scope division. **Package count stays 25.** READY differs per stage — 17a ungated, 17b after Tranche 2; DONE is per stage, so 17a lands independently |
+| 5 | WP-14 stated both that nothing transitions into `REFUND_PENDING` and that the generic endpoint can enter it | Corrected to the verified fact: **no purpose-built refund execution producer exists** (no application producer for entry, none for `→ REFUNDED`, `PaymentPort.refund()` has no callers), **while the generic `POST /v1/admin/orders/:id/transition` makes `REFUND_PENDING` reachable today**. The two together are the defect |
+| 6 | The parallelization plan carried its own revision history inside the schedule | Replaced with a **single canonical chronological schedule** (waves 0–8). Historical corrections remain in the review record only — an execution artifact that carries its own history invites an implementer to follow the wrong line |
+
+### Mechanical cross-check
+
+Compared programmatically, not visually:
+
+| Check | Result |
+|---|---|
+| Package ID set | **25/25** in README, dependency graph, parallelization plan; no extras anywhere |
+| Gap ownership: README vs canonical defect map | **0 uncorroborated** (2 found and fixed: WP-02/G-03 split-ownership wording, WP-11/G-12) |
+| Every package scheduled | **25/25**, none unscheduled |
+| Schedule respects declared dependencies | **0 violations** (stage-aware) |
+| Four hard orderings | all hold in the schedule **and** appear in the dependency graph: WP-03→WP-07 (w2→w3), WP-08→WP-12 (w1→w4), WP-04→WP-11 (w1→w4), WP-05→WP-15 (w2→w4) |
+
+**One caveat worth carrying:** the dependency check is only stage-aware if `WP-17a`/`WP-17b` keep their suffixes. A naive scan for `WP-17` sees wave 6 and would wrongly conclude WP-20 is blocked. **Keep the suffixes in every dependency column.**

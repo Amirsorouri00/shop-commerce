@@ -20,6 +20,7 @@ WP-11  manual product resolution        ← the last MISSING step in the custome
 WP-13  customer exception decisions
    ↓
 WP-14  refund capability                ← closes the only reachable dead end
+       (also requires WP-03 + WP-07 — see dependency graph)
    ↓
 WP-22  sandbox executable parity        ← the acceptance criterion itself
 ```

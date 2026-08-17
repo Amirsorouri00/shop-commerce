@@ -34,8 +34,9 @@ The 24-state / **51-edge** graph (enumerated from source) has three verified cla
 
 **A dedicated `order-state-machine.test.ts` does not exist and must be created.** Required:
 
-- **Property test over the full edge set** (51 today; this package changes it — the test must derive the set from `TRANSITIONS`, never hardcode a count): no path reaches `REFUND_PENDING` without a settled payment
-- No `CANCELLED` from a paid state without refund resolution
+- **Topology property test over the full edge set** (51 today; this package changes it — derive the set from `TRANSITIONS`, never hardcode a count): **no state reachable before `PAID` has any path to `REFUND_PENDING`**. This is a graph property over the transition table and requires no payment state.
+- **No `CANCELLED` edge originates from a state that is only reachable post-`PAID`** — again topological.
+- `RefundEligibility` guard points exist at every inbound edge to `REFUND_PENDING` (the *interface* is called; the *predicate* is WP-14's)
 - Every state has an exit or is explicitly terminal
 - **Totality**: every state appears in each of the four state-keyed maps, or is explicitly excluded. **The totality test must be written against the state enum, not against a hardcoded count** — an earlier draft specified "all 51 edges," a number this package itself changes
 - `PAID → PURCHASED` remains illegal
@@ -45,8 +46,10 @@ The 24-state / **51-edge** graph (enumerated from source) has three verified cla
 
 1. No **pre-payment** state has a legal path to `REFUND_PENDING` (topological). *The financial guarantee — that no path refunds an unpaid order — is WP-14's acceptance, since the predicate lives there.*
 2. No pre-payment failure requires refund semantics.
+
+**Explicitly NOT in WP-04's acceptance:** any claim that a settled payment exists. This package is domain/topology-only and **cannot inspect payment settlement state**. The financial invariant — *no path refunds an unpaid order at runtime* — is asserted once, in **WP-14**, where the predicate lives.
 3. Every non-terminal state has a reachable exit with a producer or a documented operator path.
-4. All six state-keyed maps are total.
+4. All **four** state-keyed maps (`TERMINAL_STATES`, `EXCEPTION_STATES`, `STATE_TO_STEP_INDEX`, `ALERTS`) are total over the state enum. `CARRIER_STATUS_MAP` is **not** state-keyed and is excluded; `STATE_BADGES` is a frontend file owned by WP-18.
 5. The new test file fails against the current topology and passes after.
 
 ## Dependencies

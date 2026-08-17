@@ -24,7 +24,7 @@ customer request → automated resolver → NEEDS_REVIEW
   → customer-visible state → notification → audit → sandbox scenario → tests
 ```
 
-**Included:** register the manual tier and real strategies; `ResolutionReview` entity; `SubmitResolutionReview` command; `POST /v1/admin/resolutions/:id/actions/submit-review`; `GET /v1/admin/resolutions?status=needs-review`; the operator workspace using Phase 8's context-preserving pattern; customer-visible outcome; audit; sandbox `RES-03` completing the loop.
+**Included:** register the **manual tier** (the strategy exists and is never constructed); `ResolutionReview` entity; `SubmitResolutionReview` command; `POST /v1/admin/resolutions/:id/actions/submit-review`; `GET /v1/admin/resolutions?status=needs-review`; the operator workspace using Phase 8's context-preserving pattern; customer-visible outcome; audit; sandbox `RES-03` completing the loop.
 
 **Excluded:** real marketplace adapters (WP-23) — sandbox and stub strategies suffice to prove the loop.
 
@@ -47,7 +47,7 @@ Full vertical: review → override → resume → quote **or** reject → termin
 1. An operator can complete a stuck resolution end-to-end and a customer sees the outcome.
 2. Rejection reaches a terminal state — **no wedge**.
 3. The override is attributed and audited.
-4. Production registers at least one resolution strategy.
+4. **The sandbox/stub ladder completes the loop.** *Production strategy registration (G-12) is **WP-23's** acceptance, not this package's — an earlier draft claimed it here while excluding the work, which is the ambiguity the review flagged.*
 
 ## Dependencies
 
